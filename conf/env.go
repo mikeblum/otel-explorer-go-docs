@@ -12,28 +12,29 @@ type EnvConf interface {
 	// Resolve env variables or fallback
 	GetEnv(env, fallback string) string
 	// Resolve current working dir
-	WorkDir() string
+	WorkDir() (string, error)
 }
 
 func NewEnv(files ...string) EnvConf {
-	return &envConf{
+	return &conf{
 		files: files,
 	}
 }
 
-type envConf struct {
+type conf struct {
 	loaded bool
 	files  []string
 }
 
-func (e *envConf) Load() error {
+func (c *conf) Load() error {
 	return godotenv.Load()
 }
 
-func (e *envConf) GetEnv(env, fallback string) string {
-	if !e.loaded {
-		e.Load()
-		e.loaded = true
+func (c *conf) GetEnv(env, fallback string) string {
+	if !c.loaded {
+		// throws error if .env file doesn't exist
+		_ = c.Load()
+		c.loaded = true
 	}
 	if value, ok := os.LookupEnv(env); ok {
 		return value
@@ -41,6 +42,6 @@ func (e *envConf) GetEnv(env, fallback string) string {
 	return fallback
 }
 
-func (e *envConf) WorkDir() string {
-	return "."
+func (c *conf) WorkDir() (string, error) {
+	return os.Getwd()
 }
