@@ -24,3 +24,6 @@ go.work.sum
 # upstream opentelemetry repos
 opentelemetry-go*
 
+# build
+otel-explorer-go-docs
+instrumentation-list.yaml
