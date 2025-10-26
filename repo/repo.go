@@ -16,6 +16,8 @@ const (
 	cwd       = ".repo"
 	perms     = 0755
 	shaLength = 8
+
+	RepoContrib = "opentelemetry-go-contrib"
 )
 
 var repos = []string{
@@ -24,6 +26,8 @@ var repos = []string{
 }
 
 type RepoInfo struct {
+	Name    string
+	Path    string
 	Head    string
 	SHA     string
 	Message string
@@ -31,6 +35,7 @@ type RepoInfo struct {
 
 func (r RepoInfo) LogValue() slog.Value {
 	return slog.GroupValue(
+		slog.String("name", r.Name),
 		slog.String("head", r.Head),
 		slog.String("sha", r.SHA),
 		slog.String("message", r.Message),
@@ -88,53 +93,66 @@ func info(path string) (*RepoInfo, error) {
 	}, nil
 }
 
-func sync(url, dir string, log *conf.Log) error {
-	name := name(url)
-	path := filepath.Join(dir, name)
+func sync(url, dir string, log *conf.Log) (*RepoInfo, error) {
+	repoName := name(url)
+	repoPath := filepath.Join(dir, repoName)
 
-	if exists(path) {
-		if err := pull(path); err != nil {
-			log.WithErrorMsg(err, "Failed to pull repo", "repo", name, "action", "pull")
-			return err
+	if exists(repoPath) {
+		if err := pull(repoPath); err != nil {
+			log.WithErrorMsg(err, "Failed to pull repo", "repo", repoName, "action", "pull")
+			return nil, err
 		}
 	} else {
 		if err := clone(url, dir); err != nil {
-			log.WithErrorMsg(err, "Failed to clone repo", "repo", name, "action", "clone")
-			return err
+			log.WithErrorMsg(err, "Failed to clone repo", "repo", repoName, "action", "clone")
+			return nil, err
 		}
 	}
 
-	info, err := info(path)
+	commitInfo, err := info(repoPath)
 	if err != nil {
-		log.WithErrorMsg(err, "Failed to resolve repo info", "repo", name)
-		return err
+		log.WithErrorMsg(err, "Failed to resolve repo info", "repo", repoName)
+		return nil, err
 	}
-	log.Info(name, "info", *info)
-	return nil
+
+	repoInfo := &RepoInfo{
+		Name:    repoName,
+		Path:    repoPath,
+		Head:    commitInfo.Head,
+		SHA:     commitInfo.SHA,
+		Message: commitInfo.Message,
+	}
+
+	log.Info(repoName, "info", *repoInfo)
+	return repoInfo, nil
 }
 
 // Checkout clones the upstream opentelemetry-go repositories.
-func Checkout() error {
+func Checkout() ([]RepoInfo, error) {
 	log := conf.NewLog()
 	env := conf.NewEnv()
 
 	workDir, err := env.WorkDir()
 	if err != nil {
 		log.WithErrorMsg(err, "Failed to resolve cwd")
-		return err
+		return nil, err
 	}
 
 	cloneDir := filepath.Join(workDir, cwd)
 	if err := os.MkdirAll(cloneDir, perms); err != nil {
 		log.WithErrorMsg(err, "Failed to create clone directory", "dir", cloneDir, "perms", perms)
-		return err
+		return nil, err
 	}
 
+	var repoInfos []RepoInfo
 	var errs error
 	for _, repoURL := range repos {
-		if err := sync(repoURL, cloneDir, log); err != nil {
+		repoInfo, err := sync(repoURL, cloneDir, log)
+		if err != nil {
 			errs = errors.Join(errs, err)
+			continue
 		}
+		repoInfos = append(repoInfos, *repoInfo)
 	}
-	return errs
+	return repoInfos, errs
 }
