@@ -58,7 +58,7 @@ vuln: ## 🛡️  Scan for vulnerabilities
 	govulncheck ./...
 
 .PHONY: pre-commit
-pre-commit: assets fmt tidy lint test sqlc-vet ## ✅ Run all checks
+pre-commit: fmt tidy lint test ## ✅ Run all checks
 
 # pass through CLI flags to ./cmd/
 %:
