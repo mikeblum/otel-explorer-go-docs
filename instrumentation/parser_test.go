@@ -31,7 +31,7 @@ require (
 			t.Fatal(err)
 		}
 
-		lib, err := Parse(goModPath)
+		lib, err := Parse(goModPath, tmpDir)
 		if err != nil {
 			t.Fatalf("Parse() error = %v", err)
 		}
@@ -51,6 +51,10 @@ require (
 		expectedLink := "https://pkg.go.dev/github.com/gin-gonic/gin"
 		if lib.LibraryLink != expectedLink {
 			t.Errorf("LibraryLink = %v, want %v", lib.LibraryLink, expectedLink)
+		}
+
+		if lib.SourcePath != "." {
+			t.Errorf("SourcePath = %v, want %v", lib.SourcePath, ".")
 		}
 	})
 
@@ -74,7 +78,7 @@ require (
 			t.Fatal(err)
 		}
 
-		lib, err := Parse(goModPath)
+		lib, err := Parse(goModPath, tmpDir)
 		if err != nil {
 			t.Fatalf("Parse() error = %v", err)
 		}
@@ -102,7 +106,7 @@ require (
 			t.Fatal(err)
 		}
 
-		lib, err := Parse(goModPath)
+		lib, err := Parse(goModPath, tmpDir)
 		if err != nil {
 			t.Fatalf("Parse() error = %v", err)
 		}
