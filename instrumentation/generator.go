@@ -12,11 +12,15 @@ func Generate(libraries []Library, outputPath string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	encoder := yaml.NewEncoder(file)
 	encoder.SetIndent(2)
-	defer encoder.Close()
+	defer func() {
+		_ = encoder.Close()
+	}()
 
 	return encoder.Encode(libraries)
 }

@@ -11,6 +11,7 @@ func TestNewLog(t *testing.T) {
 		log := NewLog()
 		if log == nil {
 			t.Error("NewLog() returned nil")
+			return
 		}
 		if log.Logger == nil {
 			t.Error("NewLog().Logger is nil")
@@ -18,12 +19,18 @@ func TestNewLog(t *testing.T) {
 	})
 
 	t.Run("log - respects LOG_LEVEL environment variable", func(t *testing.T) {
-		os.Setenv("LOG_LEVEL", "0")
-		defer os.Unsetenv("LOG_LEVEL")
+		_ = os.Setenv("LOG_LEVEL", "0")
+		defer func() {
+			_ = os.Unsetenv("LOG_LEVEL")
+		}()
 
 		log := NewLog()
 		if log == nil {
 			t.Error("NewLog() returned nil")
+			return
+		}
+		if log.Logger == nil {
+			t.Error("NewLog() Logger is nil")
 		}
 	})
 }
@@ -80,6 +87,7 @@ func TestNewLogWithLevel(t *testing.T) {
 			log := newLog(tt.level)
 			if log == nil {
 				t.Error("newLog() returned nil")
+				return
 			}
 			if log.Logger == nil {
 				t.Error("newLog().Logger is nil")

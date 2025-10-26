@@ -18,8 +18,10 @@ func TestNewEnv(t *testing.T) {
 func TestGetEnv(t *testing.T) {
 	t.Run("env - returns environment variable", func(t *testing.T) {
 		env := NewEnv()
-		os.Setenv("TEST_VAR", "test_value")
-		defer os.Unsetenv("TEST_VAR")
+		_ = os.Setenv("TEST_VAR", "test_value")
+		defer func() {
+			_ = os.Unsetenv("TEST_VAR")
+		}()
 
 		got := env.GetEnv("TEST_VAR", "fallback")
 		if got != "test_value" {
@@ -48,7 +50,9 @@ func TestGetEnv(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer os.Chdir(originalDir)
+		defer func() {
+			_ = os.Chdir(originalDir)
+		}()
 
 		if err := os.Chdir(tmpDir); err != nil {
 			t.Fatal(err)
@@ -89,7 +93,9 @@ func TestLoad(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer os.Chdir(originalDir)
+		defer func() {
+			_ = os.Chdir(originalDir)
+		}()
 
 		if err := os.Chdir(tmpDir); err != nil {
 			t.Fatal(err)
