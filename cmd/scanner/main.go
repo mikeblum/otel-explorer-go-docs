@@ -33,5 +33,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.Info("Generated instrumentation list", "count", len(libs))
+	stats := instrumentation.CalculateStats(libs)
+	log.Info("Scan complete",
+		"instrumentation", stats)
 }
