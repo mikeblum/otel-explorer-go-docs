@@ -103,10 +103,10 @@ func inferConventionsFromImport(importPath string, pkgPath string) []string {
 	pkgLower := strings.ToLower(pkgPath)
 
 	if strings.Contains(pkgLower, "http") ||
-	   strings.Contains(pkgLower, "gin") ||
-	   strings.Contains(pkgLower, "echo") ||
-	   strings.Contains(pkgLower, "mux") ||
-	   strings.Contains(pkgLower, "restful") {
+		strings.Contains(pkgLower, "gin") ||
+		strings.Contains(pkgLower, "echo") ||
+		strings.Contains(pkgLower, "mux") ||
+		strings.Contains(pkgLower, "restful") {
 		if strings.Contains(pkgPath, "otelhttp") || strings.Contains(pkgPath, "httptrace") {
 			conventions = append(conventions, "HTTP_CLIENT_SPANS")
 		} else {

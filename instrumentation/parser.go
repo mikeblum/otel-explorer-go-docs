@@ -78,10 +78,10 @@ func buildLibraryLink(pkg string) string {
 
 func generateDisplayName(pkgName string) string {
 	name := strings.TrimPrefix(pkgName, "otel")
-
-	name = strings.Title(name)
-
-	return name
+	if len(name) == 0 {
+		return ""
+	}
+	return strings.ToUpper(name[:1]) + name[1:]
 }
 
 func extractGoVersion(modFile *modfile.File) string {
