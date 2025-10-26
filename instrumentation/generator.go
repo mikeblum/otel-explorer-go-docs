@@ -30,7 +30,7 @@ func Scan(repoPath string) ([]Library, error) {
 
 	var libraries []Library
 	for _, pkg := range packages {
-		lib, err := Parse(pkg.GoModPath)
+		lib, err := Parse(pkg.GoModPath, repoPath)
 		if err != nil {
 			continue
 		}

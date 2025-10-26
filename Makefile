@@ -16,7 +16,7 @@ build:
 
 .PHONY: clean
 clean: ## 🧹 Cleanup build artifacts
-	go clean && rm -f $(BINARY_NAME_BASE) coverage.*
+	go clean && rm -rf .repo $(BINARY_NAME_BASE) coverage.* insturmentation-list.yaml
 
 .PHONY: dev
 dev: ## 🚀 Start development server

@@ -16,7 +16,7 @@ const (
 	pkgGoDevHost = "pkg.go.dev"
 )
 
-func Parse(goModPath string) (*Library, error) {
+func Parse(goModPath string, repoRoot string) (*Library, error) {
 	data, err := os.ReadFile(goModPath)
 	if err != nil {
 		return nil, err
@@ -27,10 +27,20 @@ func Parse(goModPath string) (*Library, error) {
 		return nil, err
 	}
 
+	pkgPath := filepath.Dir(goModPath)
+	relPath, err := filepath.Rel(repoRoot, pkgPath)
+	if err != nil {
+		return nil, err
+	}
+
+	pkgName := path.Base(modFile.Module.Mod.Path)
+
 	lib := &Library{
-		Scope:      Scope{Name: modFile.Module.Mod.Path},
-		Name:       path.Base(modFile.Module.Mod.Path),
-		SourcePath: filepath.Dir(goModPath),
+		Scope:            Scope{Name: modFile.Module.Mod.Path},
+		Name:             pkgName,
+		DisplayName:      generateDisplayName(pkgName),
+		SourcePath:       relPath,
+		MinimumGoVersion: extractGoVersion(modFile),
 	}
 
 	for _, req := range modFile.Require {
@@ -46,6 +56,14 @@ func Parse(goModPath string) (*Library, error) {
 		break
 	}
 
+	// Perform AST analysis to extract additional metadata
+	analysis, err := AnalyzePackage(pkgPath)
+	if err == nil && analysis != nil {
+		lib.Description = analysis.Description
+		lib.SemanticConventions = analysis.SemanticConventions
+		lib.Telemetry = analysis.Telemetry
+	}
+
 	return lib, nil
 }
 
@@ -56,4 +74,19 @@ func buildLibraryLink(pkg string) string {
 		Path:   "/" + pkg,
 	}
 	return u.String()
+}
+
+func generateDisplayName(pkgName string) string {
+	name := strings.TrimPrefix(pkgName, "otel")
+
+	name = strings.Title(name)
+
+	return name
+}
+
+func extractGoVersion(modFile *modfile.File) string {
+	if modFile.Go == nil {
+		return ""
+	}
+	return modFile.Go.Version
 }
