@@ -27,3 +27,6 @@ opentelemetry-go*
 # build
 otel-explorer-go-docs
 instrumentation-list.yaml
+
+# llms
+CLAUDE.md
