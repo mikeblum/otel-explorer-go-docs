@@ -18,8 +18,8 @@ go.work.sum
 .env
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
 
 # upstream opentelemetry repos
 opentelemetry-go*

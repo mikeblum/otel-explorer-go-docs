@@ -231,6 +231,16 @@
   telemetry:
     - when: default
       metrics:
+        - name: rpc.server.duration
+          type: HISTOGRAM
+          unit: ms
+          attributes:
+            - name: rpc.method
+              type: STRING
+            - name: rpc.service
+              type: STRING
+            - name: rpc.system
+              type: STRING
         - name: rpc.server.request.size
           type: HISTOGRAM
           unit: By
@@ -244,16 +254,6 @@
         - name: rpc.server.response.size
           type: HISTOGRAM
           unit: By
-          attributes:
-            - name: rpc.method
-              type: STRING
-            - name: rpc.service
-              type: STRING
-            - name: rpc.system
-              type: STRING
-        - name: rpc.server.duration
-          type: HISTOGRAM
-          unit: ms
           attributes:
             - name: rpc.method
               type: STRING
@@ -332,6 +332,20 @@
   telemetry:
     - when: default
       metrics:
+        - name: http.server.request.duration
+          type: HISTOGRAM
+          unit: s
+          attributes:
+            - name: http.request.method
+              type: STRING
+            - name: http.response.status_code
+              type: LONG
+            - name: http.route
+              type: STRING
+            - name: network.protocol.version
+              type: STRING
+            - name: url.scheme
+              type: STRING
         - name: http.server.request.body.size
           type: HISTOGRAM
           unit: By
@@ -349,20 +363,6 @@
         - name: http.server.response.body.size
           type: HISTOGRAM
           unit: By
-          attributes:
-            - name: http.request.method
-              type: STRING
-            - name: http.response.status_code
-              type: LONG
-            - name: http.route
-              type: STRING
-            - name: network.protocol.version
-              type: STRING
-            - name: url.scheme
-              type: STRING
-        - name: http.server.request.duration
-          type: HISTOGRAM
-          unit: s
           attributes:
             - name: http.request.method
               type: STRING
@@ -466,16 +466,6 @@
   telemetry:
     - when: default
       metrics:
-        - name: rpc.server.duration
-          type: HISTOGRAM
-          unit: ms
-          attributes:
-            - name: rpc.method
-              type: STRING
-            - name: rpc.service
-              type: STRING
-            - name: rpc.system
-              type: STRING
         - name: rpc.server.request.size
           type: HISTOGRAM
           unit: By
@@ -489,6 +479,16 @@
         - name: rpc.server.response.size
           type: HISTOGRAM
           unit: By
+          attributes:
+            - name: rpc.method
+              type: STRING
+            - name: rpc.service
+              type: STRING
+            - name: rpc.system
+              type: STRING
+        - name: rpc.server.duration
+          type: HISTOGRAM
+          unit: ms
           attributes:
             - name: rpc.method
               type: STRING
@@ -716,16 +716,6 @@
   telemetry:
     - when: default
       metrics:
-        - name: rpc.server.duration
-          type: HISTOGRAM
-          unit: ms
-          attributes:
-            - name: rpc.method
-              type: STRING
-            - name: rpc.service
-              type: STRING
-            - name: rpc.system
-              type: STRING
         - name: rpc.server.request.size
           type: HISTOGRAM
           unit: By
@@ -739,6 +729,16 @@
         - name: rpc.server.response.size
           type: HISTOGRAM
           unit: By
+          attributes:
+            - name: rpc.method
+              type: STRING
+            - name: rpc.service
+              type: STRING
+            - name: rpc.system
+              type: STRING
+        - name: rpc.server.duration
+          type: HISTOGRAM
+          unit: ms
           attributes:
             - name: rpc.method
               type: STRING
@@ -932,10 +932,10 @@
   display_name: Zipkin
   description: Package zipkin contains an OpenTelemetry tracing exporter for Zipkin.
   semantic_conventions:
-    - go.opentelemetry.io/otel/semconv/v1.25.0
+    - go.opentelemetry.io/otel/semconv/v1.37.0
     - go.opentelemetry.io/otel/semconv/v1.21.0
     - go.opentelemetry.io/otel/semconv/v1.20.0
-    - go.opentelemetry.io/otel/semconv/v1.37.0
+    - go.opentelemetry.io/otel/semconv/v1.25.0
   library_link: https://pkg.go.dev/github.com/go-logr/logr
   source_path: exporters/zipkin
   minimum_go_version: 1.24.0
@@ -1303,8 +1303,8 @@
     See [go.opentelemetry.io/otel/log] for more information about
     the OpenTelemetry Logs API.
   semantic_conventions:
-    - go.opentelemetry.io/otel/semconv/v1.37.0/otelconv
     - go.opentelemetry.io/otel/semconv/v1.37.0
+    - go.opentelemetry.io/otel/semconv/v1.37.0/otelconv
   library_link: https://pkg.go.dev/github.com/go-logr/logr
   source_path: sdk/log
   minimum_go_version: 1.24.0
@@ -1746,20 +1746,6 @@
             - name: network.peer.address
               type: STRING
       metrics:
-        - name: http.server.request.duration
-          type: HISTOGRAM
-          unit: s
-          attributes:
-            - name: http.request.method
-              type: STRING
-            - name: http.response.status_code
-              type: LONG
-            - name: http.route
-              type: STRING
-            - name: network.protocol.version
-              type: STRING
-            - name: url.scheme
-              type: STRING
         - name: http.server.request.body.size
           type: HISTOGRAM
           unit: By
@@ -1777,6 +1763,20 @@
         - name: http.server.response.body.size
           type: HISTOGRAM
           unit: By
+          attributes:
+            - name: http.request.method
+              type: STRING
+            - name: http.response.status_code
+              type: LONG
+            - name: http.route
+              type: STRING
+            - name: network.protocol.version
+              type: STRING
+            - name: url.scheme
+              type: STRING
+        - name: http.server.request.duration
+          type: HISTOGRAM
+          unit: s
           attributes:
             - name: http.request.method
               type: STRING
@@ -1836,6 +1836,20 @@
             - name: network.peer.address
               type: STRING
       metrics:
+        - name: http.server.request.duration
+          type: HISTOGRAM
+          unit: s
+          attributes:
+            - name: http.request.method
+              type: STRING
+            - name: http.response.status_code
+              type: LONG
+            - name: http.route
+              type: STRING
+            - name: network.protocol.version
+              type: STRING
+            - name: url.scheme
+              type: STRING
         - name: http.server.request.body.size
           type: HISTOGRAM
           unit: By
@@ -1853,20 +1867,6 @@
         - name: http.server.response.body.size
           type: HISTOGRAM
           unit: By
-          attributes:
-            - name: http.request.method
-              type: STRING
-            - name: http.response.status_code
-              type: LONG
-            - name: http.route
-              type: STRING
-            - name: network.protocol.version
-              type: STRING
-            - name: url.scheme
-              type: STRING
-        - name: http.server.request.duration
-          type: HISTOGRAM
-          unit: s
           attributes:
             - name: http.request.method
               type: STRING
@@ -1927,20 +1927,6 @@
             - name: network.peer.address
               type: STRING
       metrics:
-        - name: http.server.request.duration
-          type: HISTOGRAM
-          unit: s
-          attributes:
-            - name: http.request.method
-              type: STRING
-            - name: http.response.status_code
-              type: LONG
-            - name: http.route
-              type: STRING
-            - name: network.protocol.version
-              type: STRING
-            - name: url.scheme
-              type: STRING
         - name: http.server.request.body.size
           type: HISTOGRAM
           unit: By
@@ -1958,6 +1944,20 @@
         - name: http.server.response.body.size
           type: HISTOGRAM
           unit: By
+          attributes:
+            - name: http.request.method
+              type: STRING
+            - name: http.response.status_code
+              type: LONG
+            - name: http.route
+              type: STRING
+            - name: network.protocol.version
+              type: STRING
+            - name: url.scheme
+              type: STRING
+        - name: http.server.request.duration
+          type: HISTOGRAM
+          unit: s
           attributes:
             - name: http.request.method
               type: STRING
@@ -2159,8 +2159,8 @@
     See https://github.com/open-telemetry/oteps/blob/main/text/0119-standard-system-metrics.md
     for the definition of these metric instruments.
   semantic_conventions:
-    - go.opentelemetry.io/otel/semconv/v1.37.0/systemconv
     - go.opentelemetry.io/otel/semconv/v1.37.0/processconv
+    - go.opentelemetry.io/otel/semconv/v1.37.0/systemconv
   library_link: https://pkg.go.dev/github.com/shirou/gopsutil/v4
   source_path: instrumentation/host
   minimum_go_version: 1.24.0
@@ -2204,6 +2204,20 @@
             - name: network.protocol.version
               type: STRING
       metrics:
+        - name: http.server.response.body.size
+          type: HISTOGRAM
+          unit: By
+          attributes:
+            - name: http.request.method
+              type: STRING
+            - name: http.response.status_code
+              type: LONG
+            - name: http.route
+              type: STRING
+            - name: network.protocol.version
+              type: STRING
+            - name: url.scheme
+              type: STRING
         - name: http.server.request.duration
           type: HISTOGRAM
           unit: s
@@ -2219,20 +2233,6 @@
             - name: url.scheme
               type: STRING
         - name: http.server.request.body.size
-          type: HISTOGRAM
-          unit: By
-          attributes:
-            - name: http.request.method
-              type: STRING
-            - name: http.response.status_code
-              type: LONG
-            - name: http.route
-              type: STRING
-            - name: network.protocol.version
-              type: STRING
-            - name: url.scheme
-              type: STRING
-        - name: http.server.response.body.size
           type: HISTOGRAM
           unit: By
           attributes:

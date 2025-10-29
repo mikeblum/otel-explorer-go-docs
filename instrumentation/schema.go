@@ -96,7 +96,7 @@ func (s Stats) LogValue() slog.Value {
 }
 
 func CalculateStats(librariesByRepo map[string][]Library) map[string]Stats {
-	statsByRepo := make(map[string]Stats)
+	repoStats := make(map[string]Stats)
 
 	for repoName, libraries := range librariesByRepo {
 		stats := Stats{
@@ -132,8 +132,8 @@ func CalculateStats(librariesByRepo map[string][]Library) map[string]Stats {
 			}
 		}
 
-		statsByRepo[repoName] = stats
+		repoStats[repoName] = stats
 	}
 
-	return statsByRepo
+	return repoStats
 }

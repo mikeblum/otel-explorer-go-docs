@@ -1,15 +1,16 @@
-# OpenTelemetry Ecosystem Exploter: Go Instrumentation
+# OpenTelemetry Ecosystem Explorer: Go Instrumentation 🔭
 
 Go implementation of the [OpenTelemetry Ecosystem Explorer](https://github.com/open-telemetry/opentelemetry-java-instrumentation/blob/main/docs/contributing/documenting-instrumentation.md) documentation generator.
 
-Generates structured YAML documentation for OpenTelemetry Golang instrumentation libraries using static analysis (Go AST). Currently covers **opentelemetry-go-contrib** with future support planned for **opentelemetry-go** core libraries.
+Generates structured YAML documentation for OpenTelemetry Golang instrumentation libraries using static analysis (Go AST). Currently covers **opentelemetry-go-contrib** and **opentelemetry-go** libraries.
 
 **Output**: `instrumentation-list.yaml` - Complete catalog of instrumentation libraries with their telemetry (spans/metrics), attributes, and semantic conventions.
 
 ## Example Output
 
 ```yaml
-- name: otelgin
+- repository: opentelemetry-go-contrib
+  name: otelgin
   display_name: Gin
   description: Package otelgin instruments the github.com/gin-gonic/gin package.
   semantic_conventions:

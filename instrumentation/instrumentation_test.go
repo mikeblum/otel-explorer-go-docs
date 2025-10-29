@@ -197,8 +197,8 @@ func TestFullScanValidation(t *testing.T) {
 		libsByRepo := map[string][]Library{
 			repo.RepoContrib: libs,
 		}
-		statsByRepo := CalculateStats(libsByRepo)
-		stats := statsByRepo[repo.RepoContrib]
+		repoStats := CalculateStats(libsByRepo)
+		stats := repoStats[repo.RepoContrib]
 
 		// Validate overall stats
 		if stats.LibrariesWithTelemetry < 10 {
