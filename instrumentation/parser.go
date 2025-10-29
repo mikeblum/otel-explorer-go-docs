@@ -16,7 +16,7 @@ const (
 	pkgGoDevHost = "pkg.go.dev"
 )
 
-func Parse(goModPath string, repoRoot string) (*Library, error) {
+func Parse(goModPath string, repoRoot string, repoName string) (*Library, error) {
 	data, err := os.ReadFile(goModPath)
 	if err != nil {
 		return nil, err
@@ -36,6 +36,7 @@ func Parse(goModPath string, repoRoot string) (*Library, error) {
 	pkgName := path.Base(modFile.Module.Mod.Path)
 
 	lib := &Library{
+		Repository:       repoName,
 		Scope:            Scope{Name: modFile.Module.Mod.Path},
 		Name:             pkgName,
 		DisplayName:      generateDisplayName(pkgName),

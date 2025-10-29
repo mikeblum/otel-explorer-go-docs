@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/mikeblum/otel-explorer-go-docs/repo"
 )
 
 func getRepoPath(t *testing.T) string {
@@ -183,7 +185,7 @@ func TestLambdaInstrumentation(t *testing.T) {
 func TestFullScanValidation(t *testing.T) {
 	t.Run("scan all instrumentation packages", func(t *testing.T) {
 		repoPath := getRepoPath(t)
-		libs, err := Scan(repoPath)
+		libs, err := Scan(repo.RepoContrib, repoPath)
 		if err != nil {
 			t.Fatalf("Scan() error = %v", err)
 		}
@@ -192,7 +194,11 @@ func TestFullScanValidation(t *testing.T) {
 			t.Errorf("Total libraries = %d, want 14", got)
 		}
 
-		stats := CalculateStats(libs)
+		libsByRepo := map[string][]Library{
+			repo.RepoContrib: libs,
+		}
+		statsByRepo := CalculateStats(libsByRepo)
+		stats := statsByRepo[repo.RepoContrib]
 
 		// Validate overall stats
 		if stats.LibrariesWithTelemetry < 10 {
@@ -240,7 +246,7 @@ func TestFullScanValidation(t *testing.T) {
 
 	t.Run("validate no duplicate telemetry", func(t *testing.T) {
 		repoPath := getRepoPath(t)
-		libs, err := Scan(repoPath)
+		libs, err := Scan(repo.RepoContrib, repoPath)
 		if err != nil {
 			t.Fatalf("Scan() error = %v", err)
 		}
@@ -293,7 +299,7 @@ func TestFullScanValidation(t *testing.T) {
 
 	t.Run("validate expected packages have telemetry", func(t *testing.T) {
 		repoPath := getRepoPath(t)
-		libs, err := Scan(repoPath)
+		libs, err := Scan(repo.RepoContrib, repoPath)
 		if err != nil {
 			t.Fatalf("Scan() error = %v", err)
 		}

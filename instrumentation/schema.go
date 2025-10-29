@@ -7,6 +7,7 @@ import (
 )
 
 type Library struct {
+	Repository          string          `yaml:"repository"`
 	Name                string          `yaml:"name"`
 	DisplayName         string          `yaml:"display_name,omitempty"`
 	Description         string          `yaml:"description,omitempty"`
@@ -94,39 +95,45 @@ func (s Stats) LogValue() slog.Value {
 	)
 }
 
-func CalculateStats(libraries []Library) Stats {
-	stats := Stats{
-		SpansByKind:   make(map[string]int),
-		MetricsByType: make(map[string]int),
-	}
+func CalculateStats(librariesByRepo map[string][]Library) map[string]Stats {
+	statsByRepo := make(map[string]Stats)
 
-	for _, lib := range libraries {
-		if len(lib.Telemetry) > 0 {
-			stats.LibrariesWithTelemetry++
+	for repoName, libraries := range librariesByRepo {
+		stats := Stats{
+			SpansByKind:   make(map[string]int),
+			MetricsByType: make(map[string]int),
 		}
 
-		if len(lib.SemanticConventions) > 0 {
-			stats.LibrariesWithSemanticConventions++
-		}
-
-		for _, tel := range lib.Telemetry {
-			for _, span := range tel.Spans {
-				stats.TotalSpans++
-				if span.Kind != "" {
-					stats.SpansByKind[span.Kind]++
-				}
-				stats.TotalAttributes += len(span.Attributes)
+		for _, lib := range libraries {
+			if len(lib.Telemetry) > 0 {
+				stats.LibrariesWithTelemetry++
 			}
 
-			for _, metric := range tel.Metrics {
-				stats.TotalMetrics++
-				if metric.Type != "" {
-					stats.MetricsByType[metric.Type]++
+			if len(lib.SemanticConventions) > 0 {
+				stats.LibrariesWithSemanticConventions++
+			}
+
+			for _, tel := range lib.Telemetry {
+				for _, span := range tel.Spans {
+					stats.TotalSpans++
+					if span.Kind != "" {
+						stats.SpansByKind[span.Kind]++
+					}
+					stats.TotalAttributes += len(span.Attributes)
 				}
-				stats.TotalAttributes += len(metric.Attributes)
+
+				for _, metric := range tel.Metrics {
+					stats.TotalMetrics++
+					if metric.Type != "" {
+						stats.MetricsByType[metric.Type]++
+					}
+					stats.TotalAttributes += len(metric.Attributes)
+				}
 			}
 		}
+
+		statsByRepo[repoName] = stats
 	}
 
-	return stats
+	return statsByRepo
 }
