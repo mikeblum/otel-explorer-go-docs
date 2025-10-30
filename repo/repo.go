@@ -17,6 +17,7 @@ const (
 	perms     = 0755
 	shaLength = 8
 
+	RepoGo      = "opentelemetry-go"
 	RepoContrib = "opentelemetry-go-contrib"
 )
 

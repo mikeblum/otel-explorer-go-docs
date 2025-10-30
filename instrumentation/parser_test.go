@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/mikeblum/otel-explorer-go-docs/repo"
 )
 
 func TestParse(t *testing.T) {
@@ -31,9 +33,13 @@ require (
 			t.Fatal(err)
 		}
 
-		lib, err := Parse(goModPath, tmpDir)
+		lib, err := Parse(goModPath, tmpDir, repo.RepoContrib)
 		if err != nil {
 			t.Fatalf("Parse() error = %v", err)
+		}
+
+		if lib.Repository != repo.RepoContrib {
+			t.Errorf("Repository = %v, want %v", lib.Repository, repo.RepoContrib)
 		}
 
 		if lib.Name != "otelgin" {
@@ -78,7 +84,7 @@ require (
 			t.Fatal(err)
 		}
 
-		lib, err := Parse(goModPath, tmpDir)
+		lib, err := Parse(goModPath, tmpDir, repo.RepoContrib)
 		if err != nil {
 			t.Fatalf("Parse() error = %v", err)
 		}
@@ -106,7 +112,7 @@ require (
 			t.Fatal(err)
 		}
 
-		lib, err := Parse(goModPath, tmpDir)
+		lib, err := Parse(goModPath, tmpDir, repo.RepoContrib)
 		if err != nil {
 			t.Fatalf("Parse() error = %v", err)
 		}

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/mikeblum/otel-explorer-go-docs/repo"
 	"gopkg.in/yaml.v3"
 )
 
@@ -25,20 +26,32 @@ func Generate(libraries []Library, outputPath string) error {
 	return encoder.Encode(libraries)
 }
 
-func Scan(repoPath string) ([]Library, error) {
-	instPath := filepath.Join(repoPath, "instrumentation")
-	packages, err := Walk(instPath)
-	if err != nil {
-		return nil, err
+func Scan(repoName, repoPath string) ([]Library, error) {
+	var scanPaths []string
+
+	switch repoName {
+	case repo.RepoContrib:
+		scanPaths = []string{filepath.Join(repoPath, "instrumentation")}
+	case repo.RepoGo:
+		scanPaths = []string{repoPath}
+	default:
+		scanPaths = []string{filepath.Join(repoPath, "instrumentation")}
 	}
 
 	var libraries []Library
-	for _, pkg := range packages {
-		lib, err := Parse(pkg.GoModPath, repoPath)
+	for _, scanPath := range scanPaths {
+		packages, err := Walk(scanPath)
 		if err != nil {
 			continue
 		}
-		libraries = append(libraries, *lib)
+
+		for _, pkg := range packages {
+			lib, err := Parse(pkg.GoModPath, repoPath, repoName)
+			if err != nil {
+				continue
+			}
+			libraries = append(libraries, *lib)
+		}
 	}
 
 	return libraries, nil

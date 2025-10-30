@@ -156,6 +156,7 @@ func extractTelemetry(pkg *packages.Package) []Telemetry {
 
 func extractSpans(pkg *packages.Package) []Span {
 	spanMap := make(map[string]*Span)
+	startCallCount := 0
 
 	detectedKinds := detectSpanKindsInPackage(pkg)
 
@@ -173,10 +174,20 @@ func extractSpans(pkg *packages.Package) []Span {
 
 			if selExpr.Sel.Name == "Start" && len(callExpr.Args) >= 2 {
 				extractSpanFromStart(callExpr, spanMap, pkg.PkgPath, detectedKinds)
+				startCallCount++
 			}
 
 			return true
 		})
+	}
+
+	if startCallCount > 0 && len(spanMap) == 0 && len(detectedKinds) > 0 {
+		for kind := range detectedKinds {
+			spanMap[kind] = &Span{
+				Kind:       kind,
+				Attributes: getStandardAttributesForSpan(kind, pkg.PkgPath),
+			}
+		}
 	}
 
 	var spans []Span

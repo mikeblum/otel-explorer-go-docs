@@ -10,6 +10,7 @@ import (
 
 func main() {
 	log := conf.NewLog()
+	log.Info("🔭OTel Ecosystem Explorer: Golang 🔭")
 	repoInfos, err := repo.Checkout()
 	if err != nil {
 		log.WithErrorMsg(err, "Error checking out otel repos, exiting...")
@@ -17,15 +18,16 @@ func main() {
 	}
 
 	var libs []instrumentation.Library
+	libsByRepo := make(map[string][]instrumentation.Library)
+
 	for _, repoInfo := range repoInfos {
-		if repoInfo.Name == repo.RepoContrib {
-			scannedLibs, err := instrumentation.Scan(repoInfo.Path)
-			if err != nil {
-				log.WithErrorMsg(err, "Error scanning instrumentation packages", "repo", repoInfo.Name)
-				os.Exit(1)
-			}
-			libs = append(libs, scannedLibs...)
+		scannedLibs, err := instrumentation.Scan(repoInfo.Name, repoInfo.Path)
+		if err != nil {
+			log.WithErrorMsg(err, "Error scanning instrumentation packages", "repo", repoInfo.Name)
+			continue
 		}
+		libs = append(libs, scannedLibs...)
+		libsByRepo[repoInfo.Name] = scannedLibs
 	}
 
 	if err := instrumentation.Generate(libs, "instrumentation-list.yaml"); err != nil {
@@ -33,7 +35,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	stats := instrumentation.CalculateStats(libs)
-	log.Info("Scan complete",
-		"instrumentation", stats)
+	repoStats := instrumentation.CalculateStats(libsByRepo)
+	for repoName, stats := range repoStats {
+		log.Info("Scan complete ✅",
+			"repo", repoName,
+			"instrumentation", stats)
+	}
 }
