@@ -169,7 +169,7 @@ func isTracerStart(callExpr *ast.CallExpr, pkg *packages.Package) bool {
 }
 
 func extractSpans(pkg *packages.Package) []Span {
-	spanMap := make(map[string]*Span)
+	spanMap := make(map[SpanKind]*Span)
 	startCallCount := 0
 
 	detectedKinds := detectSpanKindsInPackage(pkg)
@@ -220,8 +220,8 @@ func extractSpans(pkg *packages.Package) []Span {
 	return spans
 }
 
-func detectSpanKindsInPackage(pkg *packages.Package) map[string]bool {
-	kinds := make(map[string]bool)
+func detectSpanKindsInPackage(pkg *packages.Package) map[SpanKind]bool {
+	kinds := make(map[SpanKind]bool)
 
 	for _, file := range pkg.Syntax {
 		ast.Inspect(file, func(n ast.Node) bool {
@@ -230,20 +230,14 @@ func detectSpanKindsInPackage(pkg *packages.Package) map[string]bool {
 				return true
 			}
 
-			kindName := selExpr.Sel.Name
-			if strings.Contains(kindName, "SpanKindServer") || strings.Contains(kindName, "Server") {
-				kinds[SpanKindServer] = true
+			for _, kind := range []SpanKind{
+				SpanKindServer,
+				SpanKindClient,
+				SpanKindProducer,
+				SpanKindConsumer,
+			} {
+				kinds[kind] = hasKind(selExpr.Sel.Name, kind)
 			}
-			if strings.Contains(kindName, "SpanKindClient") || strings.Contains(kindName, "Client") {
-				kinds[SpanKindClient] = true
-			}
-			if strings.Contains(kindName, "SpanKindProducer") {
-				kinds[SpanKindProducer] = true
-			}
-			if strings.Contains(kindName, "SpanKindConsumer") {
-				kinds[SpanKindConsumer] = true
-			}
-
 			return true
 		})
 	}
@@ -251,8 +245,12 @@ func detectSpanKindsInPackage(pkg *packages.Package) map[string]bool {
 	return kinds
 }
 
-func extractSpanFromStart(callExpr *ast.CallExpr, spanMap map[string]*Span, pkgPath string, detectedKinds map[string]bool) {
-	var spanKind string
+func hasKind(kindName string, kind SpanKind) bool {
+	return strings.Contains(kindName, string(kind)) || strings.Contains(kindName, strings.ToTitle(string(kind)))
+}
+
+func extractSpanFromStart(callExpr *ast.CallExpr, spanMap map[SpanKind]*Span, pkgPath string, detectedKinds map[SpanKind]bool) {
+	var spanKind SpanKind
 	var attributes []Attribute
 
 	if len(callExpr.Args) >= 3 {
@@ -299,7 +297,7 @@ func extractSpanFromStart(callExpr *ast.CallExpr, spanMap map[string]*Span, pkgP
 	}
 }
 
-func parseSpanStartOption(expr ast.Expr) (string, []Attribute) {
+func parseSpanStartOption(expr ast.Expr) (SpanKind, []Attribute) {
 	callExpr, ok := expr.(*ast.CallExpr)
 	if !ok {
 		return "", nil
@@ -323,7 +321,7 @@ func parseSpanStartOption(expr ast.Expr) (string, []Attribute) {
 	return "", nil
 }
 
-func extractSpanKind(expr ast.Expr) string {
+func extractSpanKind(expr ast.Expr) SpanKind {
 	selExpr, ok := expr.(*ast.SelectorExpr)
 	if !ok {
 		return ""
@@ -331,16 +329,14 @@ func extractSpanKind(expr ast.Expr) string {
 
 	kindName := selExpr.Sel.Name
 	switch {
-	case strings.Contains(kindName, "Server"):
+	case strings.Contains(kindName, strings.ToTitle(string(SpanKindServer))):
 		return SpanKindServer
-	case strings.Contains(kindName, "Client"):
+	case strings.Contains(kindName, strings.ToTitle(string(SpanKindClient))):
 		return SpanKindClient
-	case strings.Contains(kindName, "Producer"):
+	case strings.Contains(kindName, strings.ToTitle(string(SpanKindProducer))):
 		return SpanKindProducer
-	case strings.Contains(kindName, "Consumer"):
+	case strings.Contains(kindName, strings.ToTitle(string(SpanKindConsumer))):
 		return SpanKindConsumer
-	case strings.Contains(kindName, "Internal"):
-		return SpanKindInternal
 	default:
 		return SpanKindInternal
 	}
@@ -388,7 +384,7 @@ func parseAttributeExpr(expr ast.Expr) Attribute {
 	}
 }
 
-func getAttributeType(funcName string) string {
+func getAttributeType(funcName string) AttributeType {
 	switch {
 	case strings.Contains(funcName, "String"):
 		return AttributeTypeString
@@ -403,7 +399,7 @@ func getAttributeType(funcName string) string {
 	}
 }
 
-func extractSpanSetAttributes(callExpr *ast.CallExpr, spanMap map[string]*Span, detectedKinds map[string]bool) {
+func extractSpanSetAttributes(callExpr *ast.CallExpr, spanMap map[SpanKind]*Span, detectedKinds map[SpanKind]bool) {
 	attributes := extractAttributes(callExpr.Args)
 	if len(attributes) == 0 {
 		return
@@ -441,7 +437,7 @@ func extractSpanSetAttributes(callExpr *ast.CallExpr, spanMap map[string]*Span, 
 	}
 }
 
-func extractSpanAddEvent(callExpr *ast.CallExpr, spanMap map[string]*Span, detectedKinds map[string]bool) {
+func extractSpanAddEvent(callExpr *ast.CallExpr, spanMap map[SpanKind]*Span, detectedKinds map[SpanKind]bool) {
 	if len(callExpr.Args) < 2 {
 		return
 	}
@@ -472,21 +468,20 @@ func extractMetrics(pkg *packages.Package) []Metric {
 			}
 
 			methodName := selExpr.Sel.Name
-			isMetricCreation := strings.Contains(methodName, "Counter") ||
-				strings.Contains(methodName, "Histogram") ||
-				strings.Contains(methodName, "UpDownCounter") ||
-				strings.Contains(methodName, "Gauge")
+			metricType := mapMetricType(methodName)
 
-			if isMetricCreation && len(callExpr.Args) >= 1 {
-				if lit, ok := callExpr.Args[0].(*ast.BasicLit); ok {
-					metricName := strings.Trim(lit.Value, `"`)
-					if _, exists := metricMap[metricName]; !exists {
-						unit := extractMetricUnit(callExpr)
-						metricMap[metricName] = &Metric{
-							Name: metricName,
-							Type: mapMetricType(methodName),
-							Unit: unit,
-						}
+			if metricType == "" || len(callExpr.Args) == 0 {
+				return false
+			}
+
+			if lit, ok := callExpr.Args[0].(*ast.BasicLit); ok {
+				metricName := strings.Trim(lit.Value, `"`)
+				if _, exists := metricMap[metricName]; !exists {
+					unit := extractMetricUnit(callExpr)
+					metricMap[metricName] = &Metric{
+						Name: metricName,
+						Type: metricType,
+						Unit: unit,
 					}
 				}
 			}
@@ -511,18 +506,18 @@ func extractMetrics(pkg *packages.Package) []Metric {
 	return metrics
 }
 
-func mapMetricType(methodName string) string {
+func mapMetricType(methodName string) MetricType {
 	switch {
-	case strings.Contains(methodName, "Counter") && !strings.Contains(methodName, "UpDown"):
+	case strings.Contains(methodName, string(MetricTypeCounter)) && !strings.Contains(methodName, "UpDown"):
 		return MetricTypeCounter
-	case strings.Contains(methodName, "Histogram"):
+	case strings.Contains(methodName, string(MetricTypeHistogram)):
 		return MetricTypeHistogram
-	case strings.Contains(methodName, "UpDownCounter"):
+	case strings.Contains(methodName, string(MetricTypeUpDownCounter)):
 		return MetricTypeUpDownCounter
-	case strings.Contains(methodName, "Gauge"):
+	case strings.Contains(methodName, string(MetricTypeGauge)):
 		return MetricTypeGauge
 	default:
-		return MetricTypeCounter
+		return ""
 	}
 }
 
@@ -552,7 +547,7 @@ func extractMetricUnit(callExpr *ast.CallExpr) string {
 	return ""
 }
 
-func getSemConvAttributesForSpan(spanKind string, pkgPath string) []Attribute {
+func getSemConvAttributesForSpan(spanKind SpanKind, pkgPath string) []Attribute {
 	pkgLower := strings.ToLower(pkgPath)
 
 	if spanKind == SpanKindServer && isHTTPPackage(pkgLower) {

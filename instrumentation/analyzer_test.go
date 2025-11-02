@@ -657,8 +657,8 @@ func TestGetSemConvMetrics(t *testing.T) {
 		}
 
 		expectedMetrics := map[string]struct {
-			typ  string
-			unit string
+			metric MetricType
+			unit   string
 		}{
 			"go.memory.used":        {MetricTypeGauge, "By"},
 			"go.memory.limit":       {MetricTypeGauge, "By"},
@@ -676,8 +676,8 @@ func TestGetSemConvMetrics(t *testing.T) {
 				t.Errorf("Unexpected metric: %s", metric.Name)
 				continue
 			}
-			if metric.Type != expected.typ {
-				t.Errorf("Metric %s type = %v, want %v", metric.Name, metric.Type, expected.typ)
+			if metric.Type != expected.metric {
+				t.Errorf("Metric %s type = %v, want %v", metric.Name, metric.Type, expected.metric)
 			}
 			if metric.Unit != expected.unit {
 				t.Errorf("Metric %s unit = %v, want %v", metric.Name, metric.Unit, expected.unit)
@@ -693,8 +693,8 @@ func TestGetSemConvMetrics(t *testing.T) {
 		}
 
 		expectedMetrics := map[string]struct {
-			typ  string
-			unit string
+			metric MetricType
+			unit   string
 		}{
 			"process.cpu.time":          {MetricTypeCounter, "s"},
 			"system.cpu.time":           {MetricTypeCounter, "s"},
@@ -709,8 +709,8 @@ func TestGetSemConvMetrics(t *testing.T) {
 				t.Errorf("Unexpected metric: %s", metric.Name)
 				continue
 			}
-			if metric.Type != expected.typ {
-				t.Errorf("Metric %s type = %v, want %v", metric.Name, metric.Type, expected.typ)
+			if metric.Type != expected.metric {
+				t.Errorf("Metric %s type = %v, want %v", metric.Name, metric.Type, expected.metric)
 			}
 			if metric.Unit != expected.unit {
 				t.Errorf("Metric %s unit = %v, want %v", metric.Name, metric.Unit, expected.unit)

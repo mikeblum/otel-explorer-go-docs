@@ -6,26 +6,32 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const (
-	SpanKindServer   = "SERVER"
-	SpanKindClient   = "CLIENT"
-	SpanKindProducer = "PRODUCER"
-	SpanKindConsumer = "CONSUMER"
-	SpanKindInternal = "INTERNAL"
-)
+type SpanKind string
 
 const (
-	MetricTypeCounter       = "COUNTER"
-	MetricTypeHistogram     = "HISTOGRAM"
-	MetricTypeUpDownCounter = "UPDOWNCOUNTER"
-	MetricTypeGauge         = "GAUGE"
+	SpanKindServer   SpanKind = "SERVER"
+	SpanKindClient   SpanKind = "CLIENT"
+	SpanKindProducer SpanKind = "PRODUCER"
+	SpanKindConsumer SpanKind = "CONSUMER"
+	SpanKindInternal SpanKind = "INTERNAL"
 )
 
+type MetricType string
+
 const (
-	AttributeTypeString  = "STRING"
-	AttributeTypeLong    = "LONG"
-	AttributeTypeBoolean = "BOOLEAN"
-	AttributeTypeDouble  = "DOUBLE"
+	MetricTypeCounter       MetricType = "COUNTER"
+	MetricTypeHistogram     MetricType = "HISTOGRAM"
+	MetricTypeUpDownCounter MetricType = "UPDOWNCOUNTER"
+	MetricTypeGauge         MetricType = "GAUGE"
+)
+
+type AttributeType string
+
+const (
+	AttributeTypeString  AttributeType = "STRING"
+	AttributeTypeLong    AttributeType = "LONG"
+	AttributeTypeBoolean AttributeType = "BOOLEAN"
+	AttributeTypeDouble  AttributeType = "DOUBLE"
 )
 
 type Library struct {
@@ -35,12 +41,12 @@ type Library struct {
 	Description         string          `yaml:"description,omitempty"`
 	SemanticConventions []string        `yaml:"semantic_conventions,omitempty"`
 	LibraryLink         string          `yaml:"library_link,omitempty"`
-	SourcePath          string           `yaml:"source_path"`
-	MinimumGoVersion    string           `yaml:"minimum_go_version,omitempty"`
-	Scope               Scope            `yaml:"scope"`
-	TargetVersions      *TargetVersions  `yaml:"target_versions,omitempty"`
-	Configurations      []Configuration  `yaml:"configurations,omitempty"`
-	Telemetry           []Telemetry      `yaml:"telemetry,omitempty"`
+	SourcePath          string          `yaml:"source_path"`
+	MinimumGoVersion    string          `yaml:"minimum_go_version,omitempty"`
+	Scope               Scope           `yaml:"scope"`
+	TargetVersions      *TargetVersions `yaml:"target_versions,omitempty"`
+	Configurations      []Configuration `yaml:"configurations,omitempty"`
+	Telemetry           []Telemetry     `yaml:"telemetry,omitempty"`
 }
 
 type Scope struct {
@@ -65,20 +71,20 @@ type Telemetry struct {
 }
 
 type Span struct {
-	Kind       string      `yaml:"kind,omitempty"`
+	Kind       SpanKind    `yaml:"kind,omitempty"`
 	Attributes []Attribute `yaml:"attributes,omitempty"`
 }
 
 type Metric struct {
 	Name       string      `yaml:"name"`
-	Type       string      `yaml:"type"`
+	Type       MetricType  `yaml:"type"`
 	Unit       string      `yaml:"unit,omitempty"`
 	Attributes []Attribute `yaml:"attributes,omitempty"`
 }
 
 type Attribute struct {
-	Name string `yaml:"name"`
-	Type string `yaml:"type"`
+	Name string        `yaml:"name"`
+	Type AttributeType `yaml:"type"`
 }
 
 func (a Attribute) MarshalYAML() (interface{}, error) {
@@ -88,7 +94,7 @@ func (a Attribute) MarshalYAML() (interface{}, error) {
 			{Kind: yaml.ScalarNode, Value: "name"},
 			{Kind: yaml.ScalarNode, Value: a.Name},
 			{Kind: yaml.ScalarNode, Value: "type"},
-			{Kind: yaml.ScalarNode, Value: a.Type},
+			{Kind: yaml.ScalarNode, Value: string(a.Type)},
 		},
 	}
 	return node, nil
@@ -100,8 +106,8 @@ type Stats struct {
 	TotalSpans                       int
 	TotalMetrics                     int
 	TotalAttributes                  int
-	SpansByKind                      map[string]int
-	MetricsByType                    map[string]int
+	SpansByKind                      map[SpanKind]int
+	MetricsByType                    map[MetricType]int
 }
 
 func (s Stats) LogValue() slog.Value {
@@ -111,9 +117,9 @@ func (s Stats) LogValue() slog.Value {
 		slog.Int("spans", s.TotalSpans),
 		slog.Int("metrics", s.TotalMetrics),
 		slog.Int("attributes", s.TotalAttributes),
-		slog.Int("server", s.SpansByKind["SERVER"]),
-		slog.Int("client", s.SpansByKind["CLIENT"]),
-		slog.Int("internal", s.SpansByKind["INTERNAL"]),
+		slog.Int("server", s.SpansByKind[SpanKindServer]),
+		slog.Int("client", s.SpansByKind[SpanKindClient]),
+		slog.Int("internal", s.SpansByKind[SpanKindInternal]),
 	)
 }
 
@@ -122,8 +128,8 @@ func CalculateStats(librariesByRepo map[string][]Library) map[string]Stats {
 
 	for repoName, libraries := range librariesByRepo {
 		stats := Stats{
-			SpansByKind:   make(map[string]int),
-			MetricsByType: make(map[string]int),
+			SpansByKind:   make(map[SpanKind]int),
+			MetricsByType: make(map[MetricType]int),
 		}
 
 		for _, lib := range libraries {
