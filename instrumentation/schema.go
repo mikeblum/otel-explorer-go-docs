@@ -6,6 +6,28 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	SpanKindServer   = "SERVER"
+	SpanKindClient   = "CLIENT"
+	SpanKindProducer = "PRODUCER"
+	SpanKindConsumer = "CONSUMER"
+	SpanKindInternal = "INTERNAL"
+)
+
+const (
+	MetricTypeCounter       = "COUNTER"
+	MetricTypeHistogram     = "HISTOGRAM"
+	MetricTypeUpDownCounter = "UPDOWNCOUNTER"
+	MetricTypeGauge         = "GAUGE"
+)
+
+const (
+	AttributeTypeString  = "STRING"
+	AttributeTypeLong    = "LONG"
+	AttributeTypeBoolean = "BOOLEAN"
+	AttributeTypeDouble  = "DOUBLE"
+)
+
 type Library struct {
 	Repository          string          `yaml:"repository"`
 	Name                string          `yaml:"name"`
@@ -13,12 +35,12 @@ type Library struct {
 	Description         string          `yaml:"description,omitempty"`
 	SemanticConventions []string        `yaml:"semantic_conventions,omitempty"`
 	LibraryLink         string          `yaml:"library_link,omitempty"`
-	SourcePath          string          `yaml:"source_path"`
-	MinimumGoVersion    string          `yaml:"minimum_go_version,omitempty"`
-	Scope               Scope           `yaml:"scope"`
-	TargetVersions      TargetVersions  `yaml:"target_versions"`
-	Configurations      []Configuration `yaml:"configurations,omitempty"`
-	Telemetry           []Telemetry     `yaml:"telemetry,omitempty"`
+	SourcePath          string           `yaml:"source_path"`
+	MinimumGoVersion    string           `yaml:"minimum_go_version,omitempty"`
+	Scope               Scope            `yaml:"scope"`
+	TargetVersions      *TargetVersions  `yaml:"target_versions,omitempty"`
+	Configurations      []Configuration  `yaml:"configurations,omitempty"`
+	Telemetry           []Telemetry      `yaml:"telemetry,omitempty"`
 }
 
 type Scope struct {
@@ -26,7 +48,7 @@ type Scope struct {
 }
 
 type TargetVersions struct {
-	Library string `yaml:"library"`
+	Library string `yaml:"library,omitempty"`
 }
 
 type Configuration struct {
@@ -96,7 +118,7 @@ func (s Stats) LogValue() slog.Value {
 }
 
 func CalculateStats(librariesByRepo map[string][]Library) map[string]Stats {
-	statsByRepo := make(map[string]Stats)
+	repoStats := make(map[string]Stats)
 
 	for repoName, libraries := range librariesByRepo {
 		stats := Stats{
@@ -132,8 +154,8 @@ func CalculateStats(librariesByRepo map[string][]Library) map[string]Stats {
 			}
 		}
 
-		statsByRepo[repoName] = stats
+		repoStats[repoName] = stats
 	}
 
-	return statsByRepo
+	return repoStats
 }

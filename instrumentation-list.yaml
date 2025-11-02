@@ -1,1537 +1,3 @@
-- repository: opentelemetry-go
-  name: opencensus
-  display_name: Opencensus
-  description: |-
-    Package opencensus provides a migration bridge from OpenCensus to
-    OpenTelemetry for metrics and traces. The bridge incorporates metrics and
-    traces from OpenCensus into the OpenTelemetry SDK, combining them with
-    metrics and traces from OpenTelemetry instrumentation.
-
-    # Migration Guide
-
-    For most applications, it would be difficult to migrate an application
-    from OpenCensus to OpenTelemetry all-at-once. Libraries used by the
-    application may still be using OpenCensus, and the application itself may
-    have many lines of instrumentation.
-
-    Bridges help in this situation by allowing your application to have "mixed"
-    instrumentation, while incorporating all instrumentation into a single
-    export path. To migrate with bridges, a user would:
-
-     1. Configure the OpenTelemetry SDK for metrics and traces, with the OpenTelemetry exporters matching to your current OpenCensus exporters.
-     2. Install this OpenCensus bridge, which sends OpenCensus telemetry to your new OpenTelemetry exporters.
-     3. Over time, migrate your instrumentation from OpenCensus to OpenTelemetry.
-     4. Once all instrumentation is migrated, remove the OpenCensus bridge.
-
-    With this approach, you can migrate your telemetry, including in dependent
-    libraries over time without disruption.
-
-    # Warnings
-
-    Installing a metric or tracing bridge will cause OpenCensus telemetry to be
-    exported by OpenTelemetry exporters. Since OpenCensus telemetry uses globals,
-    installing a bridge will result in telemetry collection from _all_ libraries
-    that use OpenCensus, including some you may not expect, such as the
-    telemetry exporter itself.
-
-    # Limitations
-
-    There are known limitations to the trace bridge:
-
-      - The NewContext method of the OpenCensus Tracer cannot embed an OpenCensus
-        Span in a context unless that Span was created by that Tracer.
-      - Conversion of custom OpenCensus Samplers to OpenTelemetry is not
-        implemented, and an error will be sent to the OpenTelemetry ErrorHandler.
-
-    There are known limitations to the metric bridge:
-      - GaugeDistribution-typed metrics are dropped
-      - Histogram's SumOfSquaredDeviation field is dropped
-  library_link: https://pkg.go.dev/github.com/stretchr/testify
-  source_path: bridge/opencensus
-  minimum_go_version: 1.24.0
-  scope:
-    name: go.opentelemetry.io/otel/bridge/opencensus
-  target_versions:
-    library: v1.11.1
-- repository: opentelemetry-go
-  name: opentracing
-  display_name: Opentracing
-  description: |-
-    Package opentracing implements a bridge that forwards OpenTracing API
-    calls to the OpenTelemetry SDK.
-
-    To use the bridge, first create an OpenTelemetry tracer of
-    choice. Then use the NewTracerPair() function to create two tracers
-    - one implementing OpenTracing API (BridgeTracer) and one that
-    implements the OpenTelemetry API (WrapperTracer) and mostly
-    forwards the calls to the OpenTelemetry tracer of choice, but does
-    some extra steps to make the interaction between both APIs
-    working. If the OpenTelemetry tracer of choice already knows how to
-    cooperate with OpenTracing API through the OpenTracing bridge
-    (explained in detail below), then it is fine to skip the
-    WrapperTracer by calling the NewBridgeTracer() function to get the
-    bridge tracer and then passing the chosen OpenTelemetry tracer to
-    the SetOpenTelemetryTracer() function of the bridge tracer.
-
-    To use an OpenTelemetry span as the parent of an OpenTracing span,
-    create a context using the ContextWithBridgeSpan() function of
-    the bridge tracer, and then use the StartSpanFromContext function
-    of the OpenTracing API.
-
-    Bridge tracer also allows the user to install a warning handler
-    through the SetWarningHandler() function. The warning handler will
-    be called when there is some misbehavior of the OpenTelemetry
-    tracer with regard to the cooperation with the OpenTracing API.
-
-    For an OpenTelemetry tracer to cooperate with OpenTracing API
-    through the BridgeTracer, the OpenTelemetry tracer needs to
-    (reasoning is below the list):
-
-    1. Return the same context it received in the Start() function if
-    migration.SkipContextSetup() returns true.
-
-    2. Implement the migration.DeferredContextSetupTracerExtension
-    interface. The implementation should setup the context it would
-    normally do in the Start() function if the
-    migration.SkipContextSetup() function returned false. Calling
-    ContextWithBridgeSpan() is not necessary.
-
-    3. Have an access to the BridgeTracer instance.
-
-    4. If the migration.SkipContextSetup() function returned false, the
-    tracer should use the ContextWithBridgeSpan() function to install the
-    created span as an active OpenTracing span.
-
-    There are some differences between OpenTracing and OpenTelemetry
-    APIs, especially with regard to Go context handling. When a span is
-    created with an OpenTracing API (through the StartSpan() function)
-    the Go context is not available. BridgeTracer has access to the
-    OpenTelemetry tracer of choice, so in the StartSpan() function
-    BridgeTracer translates the parameters to the OpenTelemetry version
-    and uses the OpenTelemetry tracer's Start() function to actually
-    create a span. The OpenTelemetry Start() function takes the Go
-    context as a parameter, so BridgeTracer at this point passes a
-    temporary context to Start(). All the changes to the temporary
-    context will be lost at the end of the StartSpan() function, so the
-    OpenTelemetry tracer of choice should not do anything with the
-    context. If the returned context is different, BridgeTracer will
-    warn about it. The OpenTelemetry tracer of choice can learn about
-    this situation by using the migration.SkipContextSetup()
-    function. The tracer will receive an opportunity to set up the
-    context at a later stage. Usually after StartSpan() is finished,
-    users of the OpenTracing API are calling (either directly or
-    through the opentracing.StartSpanFromContext() helper function) the
-    opentracing.ContextWithSpan() function to insert the created
-    OpenTracing span into the context. At that time, the OpenTelemetry
-    tracer of choice has a chance of setting up the context through a
-    hook invoked inside the opentracing.ContextWithSpan() function. For
-    that to happen, the tracer should implement the
-    migration.DeferredContextSetupTracerExtension interface. This so
-    far explains the need for points 1. and 2.
-
-    When the span is created with the OpenTelemetry API (with the
-    Start() function) then migration.SkipContextSetup() will return
-    false. This means that the tracer can do the usual setup of the
-    context, but it also should set up the active OpenTracing span in
-    the context. This is because OpenTracing API is not used at all in
-    the creation of the span, but the OpenTracing API may be used
-    during the time when the created OpenTelemetry span is current. For
-    this case to work, we need to also set up active OpenTracing span
-    in the context. This can be done with the ContextWithBridgeSpan()
-    function. This means that the OpenTelemetry tracer of choice needs
-    to have an access to the BridgeTracer instance. This should explain
-    the need for points 3. and 4.
-
-    Another difference related to the Go context handling is in logging
-    - OpenTracing API does not take a context parameter in the
-    LogFields() function, so when the call to the function gets
-    translated to OpenTelemetry AddEvent() function, an empty context
-    is passed.
-  semantic_conventions:
-    - go.opentelemetry.io/otel/semconv/v1.37.0
-  library_link: https://pkg.go.dev/github.com/opentracing-contrib/go-grpc
-  source_path: bridge/opentracing
-  minimum_go_version: 1.24.0
-  scope:
-    name: go.opentelemetry.io/otel/bridge/opentracing
-  target_versions:
-    library: v0.1.2
-  telemetry:
-    - when: default
-      spans:
-        - kind: SERVER
-- repository: opentelemetry-go
-  name: otlploggrpc
-  display_name: Otlploggrpc
-  description: |-
-    Package otlploggrpc provides an OTLP log exporter using gRPC. The exporter uses gRPC to
-    transport OTLP protobuf payloads.
-
-    All Exporters must be created with [New].
-
-    The environment variables described below can be used for configuration.
-
-    OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_LOGS_ENDPOINT (default: "https://localhost:4317") -
-    target to which the exporter sends telemetry.
-    The target syntax is defined in https://github.com/grpc/grpc/blob/master/doc/naming.md.
-    The value must contain a scheme ("http" or "https") and host.
-    The value may additionally contain a port, and a path.
-    The value should not contain a query string or fragment.
-    OTEL_EXPORTER_OTLP_LOGS_ENDPOINT takes precedence over OTEL_EXPORTER_OTLP_ENDPOINT.
-    The configuration can be overridden by [WithEndpoint], [WithEndpointURL], [WithInsecure], and [WithGRPCConn] options.
-
-    OTEL_EXPORTER_OTLP_INSECURE, OTEL_EXPORTER_OTLP_LOGS_INSECURE (default: "false") -
-    setting "true" disables client transport security for the exporter's gRPC connection.
-    You can use this only when an endpoint is provided without scheme.
-    OTEL_EXPORTER_OTLP_LOGS_INSECURE takes precedence over OTEL_EXPORTER_OTLP_INSECURE.
-    The configuration can be overridden by [WithInsecure], [WithGRPCConn] options.
-
-    OTEL_EXPORTER_OTLP_HEADERS, OTEL_EXPORTER_OTLP_LOGS_HEADERS (default: none) -
-    key-value pairs used as gRPC metadata associated with gRPC requests.
-    The value is expected to be represented in a format matching the [W3C Baggage HTTP Header Content Format],
-    except that additional semi-colon delimited metadata is not supported.
-    Example value: "key1=value1,key2=value2".
-    OTEL_EXPORTER_OTLP_LOGS_HEADERS takes precedence over OTEL_EXPORTER_OTLP_HEADERS.
-    The configuration can be overridden by [WithHeaders] option.
-
-    OTEL_EXPORTER_OTLP_TIMEOUT, OTEL_EXPORTER_OTLP_LOGS_TIMEOUT (default: "10000") -
-    maximum time in milliseconds the OTLP exporter waits for each batch export.
-    OTEL_EXPORTER_OTLP_LOGS_TIMEOUT takes precedence over OTEL_EXPORTER_OTLP_TIMEOUT.
-    The configuration can be overridden by [WithTimeout] option.
-
-    OTEL_EXPORTER_OTLP_COMPRESSION, OTEL_EXPORTER_OTLP_LOGS_COMPRESSION (default: none) -
-    the gRPC compressor the exporter uses.
-    Supported value: "gzip".
-    OTEL_EXPORTER_OTLP_LOGS_COMPRESSION takes precedence over OTEL_EXPORTER_OTLP_COMPRESSION.
-    The configuration can be overridden by [WithCompressor], [WithGRPCConn] options.
-
-    OTEL_EXPORTER_OTLP_CERTIFICATE, OTEL_EXPORTER_OTLP_LOGS_CERTIFICATE (default: none) -
-    the filepath to the trusted certificate to use when verifying a server's TLS credentials.
-    OTEL_EXPORTER_OTLP_LOGS_CERTIFICATE takes precedence over OTEL_EXPORTER_OTLP_CERTIFICATE.
-    The configuration can be overridden by [WithTLSCredentials], [WithGRPCConn] options.
-
-    OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE, OTEL_EXPORTER_OTLP_LOGS_CLIENT_CERTIFICATE (default: none) -
-    the filepath to the client certificate/chain trust for client's private key to use in mTLS communication in PEM format.
-    OTEL_EXPORTER_OTLP_LOGS_CLIENT_CERTIFICATE takes precedence over OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE.
-    The configuration can be overridden by [WithTLSCredentials], [WithGRPCConn] options.
-
-    OTEL_EXPORTER_OTLP_CLIENT_KEY, OTEL_EXPORTER_OTLP_LOGS_CLIENT_KEY (default: none) -
-    the filepath to the client's private key to use in mTLS communication in PEM format.
-    OTEL_EXPORTER_OTLP_LOGS_CLIENT_KEY takes precedence over OTEL_EXPORTER_OTLP_CLIENT_KEY.
-    The configuration can be overridden by [WithTLSCredentials], [WithGRPCConn] option.
-
-    [W3C Baggage HTTP Header Content Format]: https://www.w3.org/TR/baggage/#header-content
-  library_link: https://pkg.go.dev/github.com/cenkalti/backoff/v5
-  source_path: exporters/otlp/otlplog/otlploggrpc
-  minimum_go_version: 1.24.0
-  scope:
-    name: go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc
-  target_versions:
-    library: v5.0.3
-  telemetry:
-    - when: default
-      metrics:
-        - name: rpc.server.request.size
-          type: HISTOGRAM
-          unit: By
-          attributes:
-            - name: rpc.method
-              type: STRING
-            - name: rpc.service
-              type: STRING
-            - name: rpc.system
-              type: STRING
-        - name: rpc.server.response.size
-          type: HISTOGRAM
-          unit: By
-          attributes:
-            - name: rpc.method
-              type: STRING
-            - name: rpc.service
-              type: STRING
-            - name: rpc.system
-              type: STRING
-        - name: rpc.server.duration
-          type: HISTOGRAM
-          unit: ms
-          attributes:
-            - name: rpc.method
-              type: STRING
-            - name: rpc.service
-              type: STRING
-            - name: rpc.system
-              type: STRING
-- repository: opentelemetry-go
-  name: otlploghttp
-  display_name: Otlploghttp
-  description: |-
-    Package otlploghttp provides an OTLP log exporter. The exporter uses HTTP to
-    transport OTLP protobuf payloads.
-
-    Exporter should be created using [New].
-
-    The environment variables described below can be used for configuration.
-
-    OTEL_EXPORTER_OTLP_ENDPOINT (default: "https://localhost:4318") -
-    target base URL ("/v1/logs" is appended) to which the exporter sends telemetry.
-    The value must contain a scheme ("http" or "https") and host.
-    The value may additionally contain a port and a path.
-    The value should not contain a query string or fragment.
-    The configuration can be overridden by OTEL_EXPORTER_OTLP_LOGS_ENDPOINT
-    environment variable and by [WithEndpoint], [WithEndpointURL], [WithInsecure] options.
-
-    OTEL_EXPORTER_OTLP_LOGS_ENDPOINT (default: "https://localhost:4318/v1/logs") -
-    target URL to which the exporter sends telemetry.
-    The value must contain a scheme ("http" or "https") and host.
-    The value may additionally contain a port and a path.
-    The value should not contain a query string or fragment.
-    The configuration can be overridden by [WithEndpoint], [WithEndpointURL], [WithInsecure], and [WithURLPath] options.
-
-    OTEL_EXPORTER_OTLP_HEADERS, OTEL_EXPORTER_OTLP_LOGS_HEADERS (default: none) -
-    key-value pairs used as headers associated with HTTP requests.
-    The value is expected to be represented in a format matching the [W3C Baggage HTTP Header Content Format],
-    except that additional semi-colon delimited metadata is not supported.
-    Example value: "key1=value1,key2=value2".
-    OTEL_EXPORTER_OTLP_LOGS_HEADERS takes precedence over OTEL_EXPORTER_OTLP_HEADERS.
-    The configuration can be overridden by [WithHeaders] option.
-
-    OTEL_EXPORTER_OTLP_TIMEOUT, OTEL_EXPORTER_OTLP_LOGS_TIMEOUT (default: "10000") -
-    maximum time in milliseconds the OTLP exporter waits for each batch export.
-    OTEL_EXPORTER_OTLP_LOGS_TIMEOUT takes precedence over OTEL_EXPORTER_OTLP_TIMEOUT.
-    The configuration can be overridden by [WithTimeout] option.
-
-    OTEL_EXPORTER_OTLP_COMPRESSION, OTEL_EXPORTER_OTLP_LOGS_COMPRESSION (default: none) -
-    the compression strategy the exporter uses to compress the HTTP body.
-    Supported value: "gzip".
-    OTEL_EXPORTER_OTLP_LOGS_COMPRESSION takes precedence over OTEL_EXPORTER_OTLP_COMPRESSION.
-    The configuration can be overridden by [WithCompression] option.
-
-    OTEL_EXPORTER_OTLP_CERTIFICATE, OTEL_EXPORTER_OTLP_LOGS_CERTIFICATE (default: none) -
-    the filepath to the trusted certificate to use when verifying a server's TLS credentials.
-    OTEL_EXPORTER_OTLP_LOGS_CERTIFICATE takes precedence over OTEL_EXPORTER_OTLP_CERTIFICATE.
-    The configuration can be overridden by [WithTLSClientConfig] option.
-
-    OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE, OTEL_EXPORTER_OTLP_LOGS_CLIENT_CERTIFICATE (default: none) -
-    the filepath to the client certificate/chain trust for client's private key to use in mTLS communication in PEM format.
-    OTEL_EXPORTER_OTLP_LOGS_CLIENT_CERTIFICATE takes precedence over OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE.
-    The configuration can be overridden by [WithTLSClientConfig] option.
-
-    OTEL_EXPORTER_OTLP_CLIENT_KEY, OTEL_EXPORTER_OTLP_LOGS_CLIENT_KEY (default: none) -
-    the filepath to the client's private key to use in mTLS communication in PEM format.
-    OTEL_EXPORTER_OTLP_LOGS_CLIENT_KEY takes precedence over OTEL_EXPORTER_OTLP_CLIENT_KEY.
-    The configuration can be overridden by [WithTLSClientConfig] option.
-
-    [W3C Baggage HTTP Header Content Format]: https://www.w3.org/TR/baggage/#header-content
-  library_link: https://pkg.go.dev/github.com/cenkalti/backoff/v5
-  source_path: exporters/otlp/otlplog/otlploghttp
-  minimum_go_version: 1.24.0
-  scope:
-    name: go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp
-  target_versions:
-    library: v5.0.3
-  telemetry:
-    - when: default
-      metrics:
-        - name: http.server.request.body.size
-          type: HISTOGRAM
-          unit: By
-          attributes:
-            - name: http.request.method
-              type: STRING
-            - name: http.response.status_code
-              type: LONG
-            - name: http.route
-              type: STRING
-            - name: network.protocol.version
-              type: STRING
-            - name: url.scheme
-              type: STRING
-        - name: http.server.response.body.size
-          type: HISTOGRAM
-          unit: By
-          attributes:
-            - name: http.request.method
-              type: STRING
-            - name: http.response.status_code
-              type: LONG
-            - name: http.route
-              type: STRING
-            - name: network.protocol.version
-              type: STRING
-            - name: url.scheme
-              type: STRING
-        - name: http.server.request.duration
-          type: HISTOGRAM
-          unit: s
-          attributes:
-            - name: http.request.method
-              type: STRING
-            - name: http.response.status_code
-              type: LONG
-            - name: http.route
-              type: STRING
-            - name: network.protocol.version
-              type: STRING
-            - name: url.scheme
-              type: STRING
-- repository: opentelemetry-go
-  name: otlpmetricgrpc
-  display_name: Otlpmetricgrpc
-  description: |-
-    Package otlpmetricgrpc provides an OTLP metrics exporter using gRPC.
-    By default the telemetry is sent to https://localhost:4317.
-
-    Exporter should be created using [New] and used with a [metric.PeriodicReader].
-
-    The environment variables described below can be used for configuration.
-
-    OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_METRICS_ENDPOINT (default: "https://localhost:4317") -
-    target to which the exporter sends telemetry.
-    The target syntax is defined in https://github.com/grpc/grpc/blob/master/doc/naming.md.
-    The value must contain a scheme ("http" or "https") and host.
-    The value may additionally contain a port, and a path.
-    The value should not contain a query string or fragment.
-    OTEL_EXPORTER_OTLP_METRICS_ENDPOINT takes precedence over OTEL_EXPORTER_OTLP_ENDPOINT.
-    The configuration can be overridden by [WithEndpoint], [WithEndpointURL], [WithInsecure], and [WithGRPCConn] options.
-
-    OTEL_EXPORTER_OTLP_INSECURE, OTEL_EXPORTER_OTLP_METRICS_INSECURE (default: "false") -
-    setting "true" disables client transport security for the exporter's gRPC connection.
-    You can use this only when an endpoint is provided without the http or https scheme.
-    OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_METRICS_ENDPOINT setting overrides
-    the scheme defined via OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_METRICS_ENDPOINT.
-    OTEL_EXPORTER_OTLP_METRICS_INSECURE takes precedence over OTEL_EXPORTER_OTLP_INSECURE.
-    The configuration can be overridden by [WithInsecure], [WithGRPCConn] options.
-
-    OTEL_EXPORTER_OTLP_HEADERS, OTEL_EXPORTER_OTLP_METRICS_HEADERS (default: none) -
-    key-value pairs used as gRPC metadata associated with gRPC requests.
-    The value is expected to be represented in a format matching the [W3C Baggage HTTP Header Content Format],
-    except that additional semi-colon delimited metadata is not supported.
-    Example value: "key1=value1,key2=value2".
-    OTEL_EXPORTER_OTLP_METRICS_HEADERS takes precedence over OTEL_EXPORTER_OTLP_HEADERS.
-    The configuration can be overridden by [WithHeaders] option.
-
-    OTEL_EXPORTER_OTLP_TIMEOUT, OTEL_EXPORTER_OTLP_METRICS_TIMEOUT (default: "10000") -
-    maximum time in milliseconds the OTLP exporter waits for each batch export.
-    OTEL_EXPORTER_OTLP_METRICS_TIMEOUT takes precedence over OTEL_EXPORTER_OTLP_TIMEOUT.
-    The configuration can be overridden by [WithTimeout] option.
-
-    OTEL_EXPORTER_OTLP_COMPRESSION, OTEL_EXPORTER_OTLP_METRICS_COMPRESSION (default: none) -
-    the gRPC compressor the exporter uses.
-    Supported value: "gzip".
-    OTEL_EXPORTER_OTLP_METRICS_COMPRESSION takes precedence over OTEL_EXPORTER_OTLP_COMPRESSION.
-    The configuration can be overridden by [WithCompressor], [WithGRPCConn] options.
-
-    OTEL_EXPORTER_OTLP_CERTIFICATE, OTEL_EXPORTER_OTLP_METRICS_CERTIFICATE (default: none) -
-    the filepath to the trusted certificate to use when verifying a server's TLS credentials.
-    OTEL_EXPORTER_OTLP_METRICS_CERTIFICATE takes precedence over OTEL_EXPORTER_OTLP_CERTIFICATE.
-    The configuration can be overridden by [WithTLSCredentials], [WithGRPCConn] options.
-
-    OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE, OTEL_EXPORTER_OTLP_METRICS_CLIENT_CERTIFICATE (default: none) -
-    the filepath to the client certificate/chain trust for client's private key to use in mTLS communication in PEM format.
-    OTEL_EXPORTER_OTLP_METRICS_CLIENT_CERTIFICATE takes precedence over OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE.
-    The configuration can be overridden by [WithTLSCredentials], [WithGRPCConn] options.
-
-    OTEL_EXPORTER_OTLP_CLIENT_KEY, OTEL_EXPORTER_OTLP_METRICS_CLIENT_KEY (default: none) -
-    the filepath to the client's private key to use in mTLS communication in PEM format.
-    OTEL_EXPORTER_OTLP_METRICS_CLIENT_KEY takes precedence over OTEL_EXPORTER_OTLP_CLIENT_KEY.
-    The configuration can be overridden by [WithTLSCredentials], [WithGRPCConn] option.
-
-    OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE (default: "cumulative") -
-    aggregation temporality to use on the basis of instrument kind. Supported values:
-      - "cumulative" - Cumulative aggregation temporality for all instrument kinds,
-      - "delta" - Delta aggregation temporality for Counter, Asynchronous Counter and Histogram instrument kinds;
-        Cumulative aggregation for UpDownCounter and Asynchronous UpDownCounter instrument kinds,
-      - "lowmemory" - Delta aggregation temporality for Synchronous Counter and Histogram instrument kinds;
-        Cumulative aggregation temporality for Synchronous UpDownCounter, Asynchronous Counter, and Asynchronous UpDownCounter instrument kinds.
-
-    The configuration can be overridden by [WithTemporalitySelector] option.
-
-    OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION (default: "explicit_bucket_histogram") -
-    default aggregation to use for histogram instruments. Supported values:
-      - "explicit_bucket_histogram" - [Explicit Bucket Histogram Aggregation],
-      - "base2_exponential_bucket_histogram" - [Base2 Exponential Bucket Histogram Aggregation].
-
-    The configuration can be overridden by [WithAggregationSelector] option.
-
-    [W3C Baggage HTTP Header Content Format]: https://www.w3.org/TR/baggage/#header-content
-    [Explicit Bucket Histogram Aggregation]: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.26.0/specification/metrics/sdk.md#explicit-bucket-histogram-aggregation
-    [Base2 Exponential Bucket Histogram Aggregation]: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.26.0/specification/metrics/sdk.md#base2-exponential-bucket-histogram-aggregation
-  library_link: https://pkg.go.dev/github.com/cenkalti/backoff/v5
-  source_path: exporters/otlp/otlpmetric/otlpmetricgrpc
-  minimum_go_version: 1.24.0
-  scope:
-    name: go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc
-  target_versions:
-    library: v5.0.3
-  telemetry:
-    - when: default
-      metrics:
-        - name: rpc.server.duration
-          type: HISTOGRAM
-          unit: ms
-          attributes:
-            - name: rpc.method
-              type: STRING
-            - name: rpc.service
-              type: STRING
-            - name: rpc.system
-              type: STRING
-        - name: rpc.server.request.size
-          type: HISTOGRAM
-          unit: By
-          attributes:
-            - name: rpc.method
-              type: STRING
-            - name: rpc.service
-              type: STRING
-            - name: rpc.system
-              type: STRING
-        - name: rpc.server.response.size
-          type: HISTOGRAM
-          unit: By
-          attributes:
-            - name: rpc.method
-              type: STRING
-            - name: rpc.service
-              type: STRING
-            - name: rpc.system
-              type: STRING
-- repository: opentelemetry-go
-  name: otlpmetrichttp
-  display_name: Otlpmetrichttp
-  description: |-
-    Package otlpmetrichttp provides an OTLP metrics exporter using HTTP with protobuf payloads.
-    By default the telemetry is sent to https://localhost:4318/v1/metrics.
-
-    Exporter should be created using [New] and used with a [metric.PeriodicReader].
-
-    The environment variables described below can be used for configuration.
-
-    OTEL_EXPORTER_OTLP_ENDPOINT (default: "https://localhost:4318") -
-    target base URL ("/v1/metrics" is appended) to which the exporter sends telemetry.
-    The value must contain a scheme ("http" or "https") and host.
-    The value may additionally contain a port and a path.
-    The value should not contain a query string or fragment.
-    The configuration can be overridden by OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
-    environment variable and by [WithEndpoint], [WithEndpointURL], and [WithInsecure] options.
-
-    OTEL_EXPORTER_OTLP_METRICS_ENDPOINT (default: "https://localhost:4318/v1/metrics") -
-    target URL to which the exporter sends telemetry.
-    The value must contain a scheme ("http" or "https") and host.
-    The value may additionally contain a port and a path.
-    The value should not contain a query string or fragment.
-    The configuration can be overridden by [WithEndpoint], [WithEndpointURL], [WithInsecure], and [WithURLPath] options.
-
-    OTEL_EXPORTER_OTLP_HEADERS, OTEL_EXPORTER_OTLP_METRICS_HEADERS (default: none) -
-    key-value pairs used as headers associated with HTTP requests.
-    The value is expected to be represented in a format matching the [W3C Baggage HTTP Header Content Format],
-    except that additional semi-colon delimited metadata is not supported.
-    Example value: "key1=value1,key2=value2".
-    OTEL_EXPORTER_OTLP_METRICS_HEADERS takes precedence over OTEL_EXPORTER_OTLP_HEADERS.
-    The configuration can be overridden by [WithHeaders] option.
-
-    OTEL_EXPORTER_OTLP_TIMEOUT, OTEL_EXPORTER_OTLP_METRICS_TIMEOUT (default: "10000") -
-    maximum time in milliseconds the OTLP exporter waits for each batch export.
-    OTEL_EXPORTER_OTLP_METRICS_TIMEOUT takes precedence over OTEL_EXPORTER_OTLP_TIMEOUT.
-    The configuration can be overridden by [WithTimeout] option.
-
-    OTEL_EXPORTER_OTLP_COMPRESSION, OTEL_EXPORTER_OTLP_METRICS_COMPRESSION (default: none) -
-    compression strategy the exporter uses to compress the HTTP body.
-    Supported values: "gzip".
-    OTEL_EXPORTER_OTLP_METRICS_COMPRESSION takes precedence over OTEL_EXPORTER_OTLP_COMPRESSION.
-    The configuration can be overridden by [WithCompression] option.
-
-    OTEL_EXPORTER_OTLP_CERTIFICATE, OTEL_EXPORTER_OTLP_METRICS_CERTIFICATE (default: none) -
-    filepath to the trusted certificate to use when verifying a server's TLS credentials.
-    OTEL_EXPORTER_OTLP_METRICS_CERTIFICATE takes precedence over OTEL_EXPORTER_OTLP_CERTIFICATE.
-    The configuration can be overridden by [WithTLSClientConfig] option.
-
-    OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE, OTEL_EXPORTER_OTLP_METRICS_CLIENT_CERTIFICATE (default: none) -
-    filepath to the client certificate/chain trust for client's private key to use in mTLS communication in PEM format.
-    OTEL_EXPORTER_OTLP_METRICS_CLIENT_CERTIFICATE takes precedence over OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE.
-    The configuration can be overridden by [WithTLSClientConfig] option.
-
-    OTEL_EXPORTER_OTLP_CLIENT_KEY, OTEL_EXPORTER_OTLP_METRICS_CLIENT_KEY (default: none) -
-    filepath to the client's private key to use in mTLS communication in PEM format.
-    OTEL_EXPORTER_OTLP_METRICS_CLIENT_KEY takes precedence over OTEL_EXPORTER_OTLP_CLIENT_KEY.
-    The configuration can be overridden by [WithTLSClientConfig] option.
-
-    OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE (default: "cumulative") -
-    aggregation temporality to use on the basis of instrument kind. Supported values:
-      - "cumulative" - Cumulative aggregation temporality for all instrument kinds,
-      - "delta" - Delta aggregation temporality for Counter, Asynchronous Counter and Histogram instrument kinds;
-        Cumulative aggregation for UpDownCounter and Asynchronous UpDownCounter instrument kinds,
-      - "lowmemory" - Delta aggregation temporality for Synchronous Counter and Histogram instrument kinds;
-        Cumulative aggregation temporality for Synchronous UpDownCounter, Asynchronous Counter, and Asynchronous UpDownCounter instrument kinds.
-
-    The configuration can be overridden by [WithTemporalitySelector] option.
-
-    OTEL_EXPORTER_OTLP_METRICS_DEFAULT_HISTOGRAM_AGGREGATION (default: "explicit_bucket_histogram") -
-    default aggregation to use for histogram instruments. Supported values:
-      - "explicit_bucket_histogram" - [Explicit Bucket Histogram Aggregation],
-      - "base2_exponential_bucket_histogram" - [Base2 Exponential Bucket Histogram Aggregation].
-
-    The configuration can be overridden by [WithAggregationSelector] option.
-
-    [W3C Baggage HTTP Header Content Format]: https://www.w3.org/TR/baggage/#header-content
-    [Explicit Bucket Histogram Aggregation]: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.26.0/specification/metrics/sdk.md#explicit-bucket-histogram-aggregation
-    [Base2 Exponential Bucket Histogram Aggregation]: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.26.0/specification/metrics/sdk.md#base2-exponential-bucket-histogram-aggregation
-  library_link: https://pkg.go.dev/github.com/cenkalti/backoff/v5
-  source_path: exporters/otlp/otlpmetric/otlpmetrichttp
-  minimum_go_version: 1.24.0
-  scope:
-    name: go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp
-  target_versions:
-    library: v5.0.3
-  telemetry:
-    - when: default
-      metrics:
-        - name: http.server.request.duration
-          type: HISTOGRAM
-          unit: s
-          attributes:
-            - name: http.request.method
-              type: STRING
-            - name: http.response.status_code
-              type: LONG
-            - name: http.route
-              type: STRING
-            - name: network.protocol.version
-              type: STRING
-            - name: url.scheme
-              type: STRING
-        - name: http.server.request.body.size
-          type: HISTOGRAM
-          unit: By
-          attributes:
-            - name: http.request.method
-              type: STRING
-            - name: http.response.status_code
-              type: LONG
-            - name: http.route
-              type: STRING
-            - name: network.protocol.version
-              type: STRING
-            - name: url.scheme
-              type: STRING
-        - name: http.server.response.body.size
-          type: HISTOGRAM
-          unit: By
-          attributes:
-            - name: http.request.method
-              type: STRING
-            - name: http.response.status_code
-              type: LONG
-            - name: http.route
-              type: STRING
-            - name: network.protocol.version
-              type: STRING
-            - name: url.scheme
-              type: STRING
-- repository: opentelemetry-go
-  name: otlptrace
-  display_name: Otlptrace
-  description: |-
-    Package otlptrace contains abstractions for OTLP span exporters.
-    See the official OTLP span exporter implementations:
-      - [go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc],
-      - [go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp].
-  library_link: https://pkg.go.dev/github.com/google/go-cmp
-  source_path: exporters/otlp/otlptrace
-  minimum_go_version: 1.24.0
-  scope:
-    name: go.opentelemetry.io/otel/exporters/otlp/otlptrace
-  target_versions:
-    library: v0.7.0
-- repository: opentelemetry-go
-  name: otlptracegrpc
-  display_name: Otlptracegrpc
-  description: |-
-    Package otlptracegrpc provides an OTLP span exporter using gRPC.
-    By default the telemetry is sent to https://localhost:4317.
-
-    Exporter should be created using [New].
-
-    The environment variables described below can be used for configuration.
-
-    OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_TRACES_ENDPOINT (default: "https://localhost:4317") -
-    target to which the exporter sends telemetry.
-    The target syntax is defined in https://github.com/grpc/grpc/blob/master/doc/naming.md.
-    The value must contain a scheme ("http" or "https") and host.
-    The value may additionally contain a port, and a path.
-    The value should not contain a query string or fragment.
-    OTEL_EXPORTER_OTLP_TRACES_ENDPOINT takes precedence over OTEL_EXPORTER_OTLP_ENDPOINT.
-    The configuration can be overridden by [WithEndpoint], [WithEndpointURL], [WithInsecure], and [WithGRPCConn] options.
-
-    OTEL_EXPORTER_OTLP_INSECURE, OTEL_EXPORTER_OTLP_TRACES_INSECURE (default: "false") -
-    setting "true" disables client transport security for the exporter's gRPC connection.
-    You can use this only when an endpoint is provided without the http or https scheme.
-    OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_TRACES_ENDPOINT setting overrides
-    the scheme defined via OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_TRACES_ENDPOINT.
-    OTEL_EXPORTER_OTLP_TRACES_INSECURE takes precedence over OTEL_EXPORTER_OTLP_INSECURE.
-    The configuration can be overridden by [WithInsecure], [WithGRPCConn] options.
-
-    OTEL_EXPORTER_OTLP_HEADERS, OTEL_EXPORTER_OTLP_TRACES_HEADERS (default: none) -
-    key-value pairs used as gRPC metadata associated with gRPC requests.
-    The value is expected to be represented in a format matching the [W3C Baggage HTTP Header Content Format],
-    except that additional semi-colon delimited metadata is not supported.
-    Example value: "key1=value1,key2=value2".
-    OTEL_EXPORTER_OTLP_TRACES_HEADERS takes precedence over OTEL_EXPORTER_OTLP_HEADERS.
-    The configuration can be overridden by [WithHeaders] option.
-
-    OTEL_EXPORTER_OTLP_TIMEOUT, OTEL_EXPORTER_OTLP_TRACES_TIMEOUT (default: "10000") -
-    maximum time in milliseconds the OTLP exporter waits for each batch export.
-    OTEL_EXPORTER_OTLP_TRACES_TIMEOUT takes precedence over OTEL_EXPORTER_OTLP_TIMEOUT.
-    The configuration can be overridden by [WithTimeout] option.
-
-    OTEL_EXPORTER_OTLP_COMPRESSION, OTEL_EXPORTER_OTLP_TRACES_COMPRESSION (default: none) -
-    the gRPC compressor the exporter uses.
-    Supported value: "gzip".
-    OTEL_EXPORTER_OTLP_TRACES_COMPRESSION takes precedence over OTEL_EXPORTER_OTLP_COMPRESSION.
-    The configuration can be overridden by [WithCompressor], [WithGRPCConn] options.
-
-    OTEL_EXPORTER_OTLP_CERTIFICATE, OTEL_EXPORTER_OTLP_TRACES_CERTIFICATE (default: none) -
-    the filepath to the trusted certificate to use when verifying a server's TLS credentials.
-    OTEL_EXPORTER_OTLP_TRACES_CERTIFICATE takes precedence over OTEL_EXPORTER_OTLP_CERTIFICATE.
-    The configuration can be overridden by [WithTLSCredentials], [WithGRPCConn] options.
-
-    OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE, OTEL_EXPORTER_OTLP_TRACES_CLIENT_CERTIFICATE (default: none) -
-    the filepath to the client certificate/chain trust for client's private key to use in mTLS communication in PEM format.
-    OTEL_EXPORTER_OTLP_TRACES_CLIENT_CERTIFICATE takes precedence over OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE.
-    The configuration can be overridden by [WithTLSCredentials], [WithGRPCConn] options.
-
-    OTEL_EXPORTER_OTLP_CLIENT_KEY, OTEL_EXPORTER_OTLP_TRACES_CLIENT_KEY (default: none) -
-    the filepath to the client's private key to use in mTLS communication in PEM format.
-    OTEL_EXPORTER_OTLP_TRACES_CLIENT_KEY takes precedence over OTEL_EXPORTER_OTLP_CLIENT_KEY.
-    The configuration can be overridden by [WithTLSCredentials], [WithGRPCConn] option.
-
-    [W3C Baggage HTTP Header Content Format]: https://www.w3.org/TR/baggage/#header-content
-  library_link: https://pkg.go.dev/github.com/cenkalti/backoff/v5
-  source_path: exporters/otlp/otlptrace/otlptracegrpc
-  minimum_go_version: 1.24.0
-  scope:
-    name: go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc
-  target_versions:
-    library: v5.0.3
-  telemetry:
-    - when: default
-      metrics:
-        - name: rpc.server.duration
-          type: HISTOGRAM
-          unit: ms
-          attributes:
-            - name: rpc.method
-              type: STRING
-            - name: rpc.service
-              type: STRING
-            - name: rpc.system
-              type: STRING
-        - name: rpc.server.request.size
-          type: HISTOGRAM
-          unit: By
-          attributes:
-            - name: rpc.method
-              type: STRING
-            - name: rpc.service
-              type: STRING
-            - name: rpc.system
-              type: STRING
-        - name: rpc.server.response.size
-          type: HISTOGRAM
-          unit: By
-          attributes:
-            - name: rpc.method
-              type: STRING
-            - name: rpc.service
-              type: STRING
-            - name: rpc.system
-              type: STRING
-- repository: opentelemetry-go
-  name: otlptracehttp
-  display_name: Otlptracehttp
-  description: |-
-    Package otlptracehttp provides an OTLP span exporter using HTTP with protobuf payloads.
-    By default the telemetry is sent to https://localhost:4318/v1/traces.
-
-    Exporter should be created using [New].
-
-    The environment variables described below can be used for configuration.
-
-    OTEL_EXPORTER_OTLP_ENDPOINT (default: "https://localhost:4318") -
-    target base URL ("/v1/traces" is appended) to which the exporter sends telemetry.
-    The value must contain a scheme ("http" or "https") and host.
-    The value may additionally contain a port and a path.
-    The value should not contain a query string or fragment.
-    The configuration can be overridden by OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
-    environment variable and by [WithEndpoint], [WithEndpointURL], [WithInsecure] options.
-
-    OTEL_EXPORTER_OTLP_TRACES_ENDPOINT (default: "https://localhost:4318/v1/traces") -
-    target URL to which the exporter sends telemetry.
-    The value must contain a scheme ("http" or "https") and host.
-    The value may additionally contain a port and a path.
-    The value should not contain a query string or fragment.
-    The configuration can be overridden by [WithEndpoint], [WithEndpointURL], [WithInsecure], and [WithURLPath] options.
-
-    OTEL_EXPORTER_OTLP_HEADERS, OTEL_EXPORTER_OTLP_TRACES_HEADERS (default: none) -
-    key-value pairs used as headers associated with HTTP requests.
-    The value is expected to be represented in a format matching the [W3C Baggage HTTP Header Content Format],
-    except that additional semi-colon delimited metadata is not supported.
-    Example value: "key1=value1,key2=value2".
-    OTEL_EXPORTER_OTLP_TRACES_HEADERS takes precedence over OTEL_EXPORTER_OTLP_HEADERS.
-    The configuration can be overridden by [WithHeaders] option.
-
-    OTEL_EXPORTER_OTLP_TIMEOUT, OTEL_EXPORTER_OTLP_TRACES_TIMEOUT (default: "10000") -
-    maximum time in milliseconds the OTLP exporter waits for each batch export.
-    OTEL_EXPORTER_OTLP_TRACES_TIMEOUT takes precedence over OTEL_EXPORTER_OTLP_TIMEOUT.
-    The configuration can be overridden by [WithTimeout] option.
-
-    OTEL_EXPORTER_OTLP_COMPRESSION, OTEL_EXPORTER_OTLP_TRACES_COMPRESSION (default: none) -
-    the compression strategy the exporter uses to compress the HTTP body.
-    Supported value: "gzip".
-    OTEL_EXPORTER_OTLP_TRACES_COMPRESSION takes precedence over OTEL_EXPORTER_OTLP_COMPRESSION.
-    The configuration can be overridden by [WithCompression] option.
-
-    OTEL_EXPORTER_OTLP_CERTIFICATE, OTEL_EXPORTER_OTLP_TRACES_CERTIFICATE (default: none) -
-    the filepath to the trusted certificate to use when verifying a server's TLS credentials.
-    OTEL_EXPORTER_OTLP_TRACES_CERTIFICATE takes precedence over OTEL_EXPORTER_OTLP_CERTIFICATE.
-    The configuration can be overridden by [WithTLSClientConfig] option.
-
-    OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE, OTEL_EXPORTER_OTLP_TRACES_CLIENT_CERTIFICATE (default: none) -
-    the filepath to the client certificate/chain trust for client's private key to use in mTLS communication in PEM format.
-    OTEL_EXPORTER_OTLP_TRACES_CLIENT_CERTIFICATE takes precedence over OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE.
-    The configuration can be overridden by [WithTLSClientConfig] option.
-
-    OTEL_EXPORTER_OTLP_CLIENT_KEY, OTEL_EXPORTER_OTLP_TRACES_CLIENT_KEY (default: none) -
-    the filepath to the client's private key to use in mTLS communication in PEM format.
-    OTEL_EXPORTER_OTLP_TRACES_CLIENT_KEY takes precedence over OTEL_EXPORTER_OTLP_CLIENT_KEY.
-    The configuration can be overridden by [WithTLSClientConfig] option.
-
-    [W3C Baggage HTTP Header Content Format]: https://www.w3.org/TR/baggage/#header-content
-  library_link: https://pkg.go.dev/github.com/cenkalti/backoff/v5
-  source_path: exporters/otlp/otlptrace/otlptracehttp
-  minimum_go_version: 1.24.0
-  scope:
-    name: go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp
-  target_versions:
-    library: v5.0.3
-  telemetry:
-    - when: default
-      metrics:
-        - name: http.server.request.duration
-          type: HISTOGRAM
-          unit: s
-          attributes:
-            - name: http.request.method
-              type: STRING
-            - name: http.response.status_code
-              type: LONG
-            - name: http.route
-              type: STRING
-            - name: network.protocol.version
-              type: STRING
-            - name: url.scheme
-              type: STRING
-        - name: http.server.request.body.size
-          type: HISTOGRAM
-          unit: By
-          attributes:
-            - name: http.request.method
-              type: STRING
-            - name: http.response.status_code
-              type: LONG
-            - name: http.route
-              type: STRING
-            - name: network.protocol.version
-              type: STRING
-            - name: url.scheme
-              type: STRING
-        - name: http.server.response.body.size
-          type: HISTOGRAM
-          unit: By
-          attributes:
-            - name: http.request.method
-              type: STRING
-            - name: http.response.status_code
-              type: LONG
-            - name: http.route
-              type: STRING
-            - name: network.protocol.version
-              type: STRING
-            - name: url.scheme
-              type: STRING
-- repository: opentelemetry-go
-  name: prometheus
-  display_name: Prometheus
-  description: |-
-    Package prometheus provides a Prometheus Exporter that converts
-    OTLP metrics into the Prometheus exposition format and implements
-    prometheus.Collector to provide a handler for these metrics.
-  library_link: https://pkg.go.dev/github.com/prometheus/client_golang
-  source_path: exporters/prometheus
-  minimum_go_version: 1.24.0
-  scope:
-    name: go.opentelemetry.io/otel/exporters/prometheus
-  target_versions:
-    library: v1.23.2
-- repository: opentelemetry-go
-  name: stdoutlog
-  display_name: Stdoutlog
-  description: |-
-    Package stdoutlog provides an exporter for OpenTelemetry log
-    telemetry.
-
-    The exporter is intended to be used for testing and debugging, it is not
-    meant for production use. Additionally, it does not provide an interchange
-    format for OpenTelemetry that is supported with any stability or
-    compatibility guarantees. If these are needed features, please use the OTLP
-    exporter instead.
-  library_link: https://pkg.go.dev/github.com/stretchr/testify
-  source_path: exporters/stdout/stdoutlog
-  minimum_go_version: 1.24.0
-  scope:
-    name: go.opentelemetry.io/otel/exporters/stdout/stdoutlog
-  target_versions:
-    library: v1.11.1
-- repository: opentelemetry-go
-  name: stdoutmetric
-  display_name: Stdoutmetric
-  description: |-
-    Package stdoutmetric provides an exporter for OpenTelemetry metric
-    telemetry.
-
-    The exporter is intended to be used for testing and debugging, it is not
-    meant for production use. Additionally, it does not provide an interchange
-    format for OpenTelemetry that is supported with any stability or
-    compatibility guarantees. If these are needed features, please use the OTLP
-    exporter instead.
-  library_link: https://pkg.go.dev/github.com/stretchr/testify
-  source_path: exporters/stdout/stdoutmetric
-  minimum_go_version: 1.24.0
-  scope:
-    name: go.opentelemetry.io/otel/exporters/stdout/stdoutmetric
-  target_versions:
-    library: v1.11.1
-- repository: opentelemetry-go
-  name: stdouttrace
-  display_name: Stdouttrace
-  description: |-
-    Package stdouttrace contains an OpenTelemetry exporter for tracing
-    telemetry to be written to an output destination as JSON.
-
-    See [go.opentelemetry.io/otel/exporters/stdout/stdouttrace/internal/x] for information about
-    the experimental features.
-  library_link: https://pkg.go.dev/github.com/stretchr/testify
-  source_path: exporters/stdout/stdouttrace
-  minimum_go_version: 1.24.0
-  scope:
-    name: go.opentelemetry.io/otel/exporters/stdout/stdouttrace
-  target_versions:
-    library: v1.11.1
-- repository: opentelemetry-go
-  name: zipkin
-  display_name: Zipkin
-  description: Package zipkin contains an OpenTelemetry tracing exporter for Zipkin.
-  semantic_conventions:
-    - go.opentelemetry.io/otel/semconv/v1.25.0
-    - go.opentelemetry.io/otel/semconv/v1.21.0
-    - go.opentelemetry.io/otel/semconv/v1.20.0
-    - go.opentelemetry.io/otel/semconv/v1.37.0
-  library_link: https://pkg.go.dev/github.com/go-logr/logr
-  source_path: exporters/zipkin
-  minimum_go_version: 1.24.0
-  scope:
-    name: go.opentelemetry.io/otel/exporters/zipkin
-  target_versions:
-    library: v1.4.3
-- repository: opentelemetry-go
-  name: otel
-  description: |-
-    Package otel provides global access to the OpenTelemetry API. The subpackages of
-    the otel package provide an implementation of the OpenTelemetry API.
-
-    The provided API is used to instrument code and measure data about that code's
-    performance and operation. The measured data, by default, is not processed or
-    transmitted anywhere. An implementation of the OpenTelemetry SDK, like the
-    default SDK implementation (go.opentelemetry.io/otel/sdk), and associated
-    exporters are used to process and transport this data.
-
-    To read the getting started guide, see https://opentelemetry.io/docs/languages/go/getting-started/.
-
-    To read more about tracing, see go.opentelemetry.io/otel/trace.
-
-    To read more about metrics, see go.opentelemetry.io/otel/metric.
-
-    To read more about logs, see go.opentelemetry.io/otel/log.
-
-    To read more about propagation, see go.opentelemetry.io/otel/propagation and
-    go.opentelemetry.io/otel/baggage.
-  library_link: https://pkg.go.dev/github.com/go-logr/logr
-  source_path: .
-  minimum_go_version: 1.24.0
-  scope:
-    name: go.opentelemetry.io/otel
-  target_versions:
-    library: v1.4.3
-- repository: opentelemetry-go
-  name: log
-  display_name: Log
-  description: |-
-    Package log provides the OpenTelemetry Logs API.
-
-    This API is separate from its implementation so the instrumentation built from
-    it is reusable. See [go.opentelemetry.io/otel/sdk/log] for the official
-    OpenTelemetry implementation of this API.
-
-    The log package provides the OpenTelemetry Logs API, which serves as a standard
-    interface for generating and managing log records within the OpenTelemetry ecosystem.
-    This package allows users to emit LogRecords, enabling structured, context-rich logging
-    that can be easily integrated with observability tools. It ensures that log data is captured
-    in a way that is consistent with OpenTelemetry's data model.
-
-    This package can be used to create bridges between existing logging libraries and OpenTelemetry.
-    Log bridges allow integrating the existing logging setups with OpenTelemetry.
-    Log bridges can be found in the [registry].
-
-    # API Implementations
-
-    This package does not conform to the standard Go versioning policy, all of its
-    interfaces may have methods added to them without a package major version bump.
-    This non-standard API evolution could surprise an uninformed implementation
-    author. They could unknowingly build their implementation in a way that would
-    result in a runtime panic for their users that update to the new API.
-
-    The API is designed to help inform an instrumentation author about this
-    non-standard API evolution. It requires them to choose a default behavior for
-    unimplemented interface methods. There are three behavior choices they can
-    make:
-
-      - Compilation failure
-      - Panic
-      - Default to another implementation
-
-    All interfaces in this API embed a corresponding interface from
-    [go.opentelemetry.io/otel/log/embedded]. If an author wants the default
-    behavior of their implementations to be a compilation failure, signaling to
-    their users they need to update to the latest version of that implementation,
-    they need to embed the corresponding interface from
-    [go.opentelemetry.io/otel/log/embedded] in their implementation. For example,
-
-    	import "go.opentelemetry.io/otel/log/embedded"
-
-    	type LoggerProvider struct {
-    		embedded.LoggerProvider
-    		// ...
-    	}
-
-    If an author wants the default behavior of their implementations to a panic,
-    they need to embed the API interface directly.
-
-    	import "go.opentelemetry.io/otel/log"
-
-    	type LoggerProvider struct {
-    		log.LoggerProvider
-    		// ...
-    	}
-
-    This is not a recommended behavior as it could lead to publishing packages that
-    contain runtime panics when users update other package that use newer versions
-    of [go.opentelemetry.io/otel/log].
-
-    Finally, an author can embed another implementation in theirs. The embedded
-    implementation will be used for methods not defined by the author. For example,
-    an author who wants to default to silently dropping the call can use
-    [go.opentelemetry.io/otel/log/noop]:
-
-    	import "go.opentelemetry.io/otel/log/noop"
-
-    	type LoggerProvider struct {
-    		noop.LoggerProvider
-    		// ...
-    	}
-
-    It is strongly recommended that authors only embed
-    go.opentelemetry.io/otel/log/noop if they choose this default behavior. That
-    implementation is the only one OpenTelemetry authors can guarantee will fully
-    implement all the API interfaces when a user updates their API.
-
-    [registry]: https://opentelemetry.io/ecosystem/registry/?language=go&component=log-bridge
-  library_link: https://pkg.go.dev/github.com/go-logr/logr
-  source_path: log
-  minimum_go_version: 1.24.0
-  scope:
-    name: go.opentelemetry.io/otel/log
-  target_versions:
-    library: v1.4.3
-- repository: opentelemetry-go
-  name: metric
-  display_name: Metric
-  description: |-
-    Package metric provides the OpenTelemetry API used to measure metrics about
-    source code operation.
-
-    This API is separate from its implementation so the instrumentation built from
-    it is reusable. See [go.opentelemetry.io/otel/sdk/metric] for the official
-    OpenTelemetry implementation of this API.
-
-    All measurements made with this package are made via instruments. These
-    instruments are created by a [Meter] which itself is created by a
-    [MeterProvider]. Applications need to accept a [MeterProvider] implementation
-    as a starting point when instrumenting. This can be done directly, or by using
-    the OpenTelemetry global MeterProvider via [GetMeterProvider]. Using an
-    appropriately named [Meter] from the accepted [MeterProvider], instrumentation
-    can then be built from the [Meter]'s instruments.
-
-    # Instruments
-
-    Each instrument is designed to make measurements of a particular type. Broadly,
-    all instruments fall into two overlapping logical categories: asynchronous or
-    synchronous, and int64 or float64.
-
-    All synchronous instruments ([Int64Counter], [Int64UpDownCounter],
-    [Int64Histogram], [Float64Counter], [Float64UpDownCounter], and
-    [Float64Histogram]) are used to measure the operation and performance of source
-    code during the source code execution. These instruments only make measurements
-    when the source code they instrument is run.
-
-    All asynchronous instruments ([Int64ObservableCounter],
-    [Int64ObservableUpDownCounter], [Int64ObservableGauge],
-    [Float64ObservableCounter], [Float64ObservableUpDownCounter], and
-    [Float64ObservableGauge]) are used to measure metrics outside of the execution
-    of source code. They are said to make "observations" via a callback function
-    called once every measurement collection cycle.
-
-    Each instrument is also grouped by the value type it measures. Either int64 or
-    float64. The value being measured will dictate which instrument in these
-    categories to use.
-
-    Outside of these two broad categories, instruments are described by the
-    function they are designed to serve. All Counters ([Int64Counter],
-    [Float64Counter], [Int64ObservableCounter], and [Float64ObservableCounter]) are
-    designed to measure values that never decrease in value, but instead only
-    incrementally increase in value. UpDownCounters ([Int64UpDownCounter],
-    [Float64UpDownCounter], [Int64ObservableUpDownCounter], and
-    [Float64ObservableUpDownCounter]) on the other hand, are designed to measure
-    values that can increase and decrease. When more information needs to be
-    conveyed about all the synchronous measurements made during a collection cycle,
-    a Histogram ([Int64Histogram] and [Float64Histogram]) should be used. Finally,
-    when just the most recent measurement needs to be conveyed about an
-    asynchronous measurement, a Gauge ([Int64ObservableGauge] and
-    [Float64ObservableGauge]) should be used.
-
-    See the [OpenTelemetry documentation] for more information about instruments
-    and their intended use.
-
-    # Instrument Name
-
-    OpenTelemetry defines an [instrument name syntax] that restricts what
-    instrument names are allowed.
-
-    Instrument names should ...
-
-      - Not be empty.
-      - Have an alphabetic character as their first letter.
-      - Have any letter after the first be an alphanumeric character, ‘_’, ‘.’,
-        ‘-’, or ‘/’.
-      - Have a maximum length of 255 letters.
-
-    To ensure compatibility with observability platforms, all instruments created
-    need to conform to this syntax. Not all implementations of the API will validate
-    these names, it is the callers responsibility to ensure compliance.
-
-    # Measurements
-
-    Measurements are made by recording values and information about the values with
-    an instrument. How these measurements are recorded depends on the instrument.
-
-    Measurements for synchronous instruments ([Int64Counter], [Int64UpDownCounter],
-    [Int64Histogram], [Float64Counter], [Float64UpDownCounter], and
-    [Float64Histogram]) are recorded using the instrument methods directly. All
-    counter instruments have an Add method that is used to measure an increment
-    value, and all histogram instruments have a Record method to measure a data
-    point.
-
-    Asynchronous instruments ([Int64ObservableCounter],
-    [Int64ObservableUpDownCounter], [Int64ObservableGauge],
-    [Float64ObservableCounter], [Float64ObservableUpDownCounter], and
-    [Float64ObservableGauge]) record measurements within a callback function. The
-    callback is registered with the Meter which ensures the callback is called once
-    per collection cycle. A callback can be registered two ways: during the
-    instrument's creation using an option, or later using the RegisterCallback
-    method of the [Meter] that created the instrument.
-
-    If the following criteria are met, an option ([WithInt64Callback] or
-    [WithFloat64Callback]) can be used during the asynchronous instrument's
-    creation to register a callback ([Int64Callback] or [Float64Callback],
-    respectively):
-
-      - The measurement process is known when the instrument is created
-      - Only that instrument will make a measurement within the callback
-      - The callback never needs to be unregistered
-
-    If the criteria are not met, use the RegisterCallback method of the [Meter] that
-    created the instrument to register a [Callback].
-
-    # API Implementations
-
-    This package does not conform to the standard Go versioning policy, all of its
-    interfaces may have methods added to them without a package major version bump.
-    This non-standard API evolution could surprise an uninformed implementation
-    author. They could unknowingly build their implementation in a way that would
-    result in a runtime panic for their users that update to the new API.
-
-    The API is designed to help inform an instrumentation author about this
-    non-standard API evolution. It requires them to choose a default behavior for
-    unimplemented interface methods. There are three behavior choices they can
-    make:
-
-      - Compilation failure
-      - Panic
-      - Default to another implementation
-
-    All interfaces in this API embed a corresponding interface from
-    [go.opentelemetry.io/otel/metric/embedded]. If an author wants the default
-    behavior of their implementations to be a compilation failure, signaling to
-    their users they need to update to the latest version of that implementation,
-    they need to embed the corresponding interface from
-    [go.opentelemetry.io/otel/metric/embedded] in their implementation. For
-    example,
-
-    	import "go.opentelemetry.io/otel/metric/embedded"
-
-    	type MeterProvider struct {
-    		embedded.MeterProvider
-    		// ...
-    	}
-
-    If an author wants the default behavior of their implementations to a panic,
-    they need to embed the API interface directly.
-
-    	import "go.opentelemetry.io/otel/metric"
-
-    	type MeterProvider struct {
-    		metric.MeterProvider
-    		// ...
-    	}
-
-    This is not a recommended behavior as it could lead to publishing packages that
-    contain runtime panics when users update other package that use newer versions
-    of [go.opentelemetry.io/otel/metric].
-
-    Finally, an author can embed another implementation in theirs. The embedded
-    implementation will be used for methods not defined by the author. For example,
-    an author who wants to default to silently dropping the call can use
-    [go.opentelemetry.io/otel/metric/noop]:
-
-    	import "go.opentelemetry.io/otel/metric/noop"
-
-    	type MeterProvider struct {
-    		noop.MeterProvider
-    		// ...
-    	}
-
-    It is strongly recommended that authors only embed
-    [go.opentelemetry.io/otel/metric/noop] if they choose this default behavior.
-    That implementation is the only one OpenTelemetry authors can guarantee will
-    fully implement all the API interfaces when a user updates their API.
-
-    [instrument name syntax]: https://opentelemetry.io/docs/specs/otel/metrics/api/#instrument-name-syntax
-    [OpenTelemetry documentation]: https://opentelemetry.io/docs/concepts/signals/metrics/
-    [GetMeterProvider]: https://pkg.go.dev/go.opentelemetry.io/otel#GetMeterProvider
-  library_link: https://pkg.go.dev/github.com/stretchr/testify
-  source_path: metric
-  minimum_go_version: 1.24.0
-  scope:
-    name: go.opentelemetry.io/otel/metric
-  target_versions:
-    library: v1.11.1
-- repository: opentelemetry-go
-  name: schema
-  display_name: Schema
-  library_link: https://pkg.go.dev/github.com/Masterminds/semver/v3
-  source_path: schema
-  minimum_go_version: 1.24.0
-  scope:
-    name: go.opentelemetry.io/otel/schema
-  target_versions:
-    library: v3.4.0
-- repository: opentelemetry-go
-  name: sdk
-  display_name: Sdk
-  description: Package sdk provides the OpenTelemetry default SDK for Go.
-  library_link: https://pkg.go.dev/github.com/go-logr/logr
-  source_path: sdk
-  minimum_go_version: 1.24.0
-  scope:
-    name: go.opentelemetry.io/otel/sdk
-  target_versions:
-    library: v1.4.3
-- repository: opentelemetry-go
-  name: log
-  display_name: Log
-  description: |-
-    Package log provides the OpenTelemetry Logs SDK.
-
-    See https://opentelemetry.io/docs/concepts/signals/logs/ for information
-    about the concept of OpenTelemetry Logs and
-    https://opentelemetry.io/docs/concepts/components/ for more information
-    about OpenTelemetry SDKs.
-
-    The entry point for the log package is [NewLoggerProvider].
-    [LoggerProvider] is the object that all Bridge API calls use to create
-    Loggers, and ultimately emit log records.
-    Also, it is an object that should be used to
-    control the life-cycle (start, flush, and shutdown) of the Logs SDK.
-
-    A LoggerProvider needs to be configured to process the log records, this is
-    done by configuring it with a [Processor] implementation using [WithProcessor].
-    The log package provides the [BatchProcessor] and [SimpleProcessor]
-    that are configured with an [Exporter] implementation which
-    exports the log records to given destination. See
-    [go.opentelemetry.io/otel/exporters] for exporters that can be used with these
-    Processors.
-
-    The data generated by a LoggerProvider needs to include information about its
-    origin. A LoggerProvider needs to be configured with a Resource, by using
-    [WithResource], to include this information. This Resource
-    should be used to describe the unique runtime environment instrumented code
-    is being run on. That way when multiple instances of the code are collected
-    at a single endpoint their origin is decipherable.
-
-    See [go.opentelemetry.io/otel/sdk/log/internal/x] for information about
-    the experimental features.
-
-    See [go.opentelemetry.io/otel/log] for more information about
-    the OpenTelemetry Logs API.
-  semantic_conventions:
-    - go.opentelemetry.io/otel/semconv/v1.37.0/otelconv
-    - go.opentelemetry.io/otel/semconv/v1.37.0
-  library_link: https://pkg.go.dev/github.com/go-logr/logr
-  source_path: sdk/log
-  minimum_go_version: 1.24.0
-  scope:
-    name: go.opentelemetry.io/otel/sdk/log
-  target_versions:
-    library: v1.4.3
-- repository: opentelemetry-go
-  name: metric
-  display_name: Metric
-  description: |-
-    Package metric provides an implementation of the OpenTelemetry metrics SDK.
-
-    See https://opentelemetry.io/docs/concepts/signals/metrics/ for information
-    about the concept of OpenTelemetry metrics and
-    https://opentelemetry.io/docs/concepts/components/ for more information
-    about OpenTelemetry SDKs.
-
-    The entry point for the metric package is the MeterProvider. It is the
-    object that all API calls use to create Meters, instruments, and ultimately
-    make metric measurements. Also, it is an object that should be used to
-    control the life-cycle (start, flush, and shutdown) of the SDK.
-
-    A MeterProvider needs to be configured to export the measured data, this is
-    done by configuring it with a Reader implementation (using the WithReader
-    MeterProviderOption). Readers take two forms: ones that push to an endpoint
-    (NewPeriodicReader), and ones that an endpoint pulls from. See
-    [go.opentelemetry.io/otel/exporters] for exporters that can be used as
-    or with these Readers.
-
-    Each Reader, when registered with the MeterProvider, can be augmented with a
-    View. Views allow users that run OpenTelemetry instrumented code to modify
-    the generated data of that instrumentation.
-
-    The data generated by a MeterProvider needs to include information about its
-    origin. A MeterProvider needs to be configured with a Resource, using the
-    WithResource MeterProviderOption, to include this information. This Resource
-    should be used to describe the unique runtime environment instrumented code
-    is being run on. That way when multiple instances of the code are collected
-    at a single endpoint their origin is decipherable.
-
-    To avoid leaking memory, the SDK returns the same instrument for calls to
-    create new instruments with the same Name, Unit, and Description.
-    Importantly, callbacks provided using metric.WithFloat64Callback or
-    metric.WithInt64Callback will only apply for the first instrument created
-    with a given Name, Unit, and Description. Instead, use
-    Meter.RegisterCallback and Registration.Unregister to add and remove
-    callbacks without leaking memory.
-
-    # Cardinality Limits
-
-    Cardinality refers to the number of unique attributes collected. High cardinality can lead to
-    excessive memory usage, increased storage costs, and backend performance issues.
-
-    Currently, the OpenTelemetry Go Metric SDK does not enforce a cardinality limit by default
-    (note that this may change in a future release). Use [WithCardinalityLimit] to set the
-    cardinality limit as desired.
-
-    New attribute sets are dropped when the cardinality limit is reached. The measurement of
-    these sets are aggregated into
-    a special attribute set containing attribute.Bool("otel.metric.overflow", true).
-    This ensures total metric values (e.g., Sum, Count) remain correct for the
-    collection cycle, but information about the specific dropped sets
-    is not preserved.
-
-    Recommendations:
-
-      - Set the limit based on the theoretical maximum combinations or expected
-        active combinations. The OpenTelemetry Specification recommends a default of 2000.
-      - A too high of a limit increases worst-case memory overhead in the SDK and may cause downstream
-        issues for databases that cannot handle high cardinality.
-      - A too low of a limit causes loss of attribute detail as more data falls into overflow.
-
-    # Ordering and Collection Guarantees
-
-    For performance reasons, the SDK does not guarantee that the order in which
-    synchronous measurements are made to the SDK is reflected in the collected
-    metric data. This means that even when a single goroutine makes sequential
-    synchronous measurements, it is possible for a later measurement to be
-    included in the collected metric data when an earlier measurement is not.
-    This applies to measurements made to different instruments, or to different
-    attribute sets on the same instrument. Sequential measurements made to the
-    same instrument and with the same attributes are guaranteed to preserve
-    ordering with respect to collection.
-
-    Additionally, the SDK does not guarantee that exemplars are always included
-    in the same batch of metric data as the measurement they are associated
-    with.
-
-    See [go.opentelemetry.io/otel/metric] for more information about
-    the metric API.
-
-    See [go.opentelemetry.io/otel/sdk/metric/internal/x] for information about
-    the experimental features.
-  library_link: https://pkg.go.dev/github.com/go-logr/logr
-  source_path: sdk/metric
-  minimum_go_version: 1.24.0
-  scope:
-    name: go.opentelemetry.io/otel/sdk/metric
-  target_versions:
-    library: v1.4.3
-- repository: opentelemetry-go
-  name: trace
-  display_name: Trace
-  description: |-
-    Package trace provides an implementation of the tracing part of the
-    OpenTelemetry API.
-
-    To participate in distributed traces a Span needs to be created for the
-    operation being performed as part of a traced workflow. In its simplest form:
-
-    	var tracer trace.Tracer
-
-    	func init() {
-    		tracer = otel.Tracer("instrumentation/package/name")
-    	}
-
-    	func operation(ctx context.Context) {
-    		var span trace.Span
-    		ctx, span = tracer.Start(ctx, "operation")
-    		defer span.End()
-    		// ...
-    	}
-
-    A Tracer is unique to the instrumentation and is used to create Spans.
-    Instrumentation should be designed to accept a TracerProvider from which it
-    can create its own unique Tracer. Alternatively, the registered global
-    TracerProvider from the go.opentelemetry.io/otel package can be used as
-    a default.
-
-    	const (
-    		name    = "instrumentation/package/name"
-    		version = "0.1.0"
-    	)
-
-    	type Instrumentation struct {
-    		tracer trace.Tracer
-    	}
-
-    	func NewInstrumentation(tp trace.TracerProvider) *Instrumentation {
-    		if tp == nil {
-    			tp = otel.TracerProvider()
-    		}
-    		return &Instrumentation{
-    			tracer: tp.Tracer(name, trace.WithInstrumentationVersion(version)),
-    		}
-    	}
-
-    	func operation(ctx context.Context, inst *Instrumentation) {
-    		var span trace.Span
-    		ctx, span = inst.tracer.Start(ctx, "operation")
-    		defer span.End()
-    		// ...
-    	}
-
-    # API Implementations
-
-    This package does not conform to the standard Go versioning policy; all of its
-    interfaces may have methods added to them without a package major version bump.
-    This non-standard API evolution could surprise an uninformed implementation
-    author. They could unknowingly build their implementation in a way that would
-    result in a runtime panic for their users that update to the new API.
-
-    The API is designed to help inform an instrumentation author about this
-    non-standard API evolution. It requires them to choose a default behavior for
-    unimplemented interface methods. There are three behavior choices they can
-    make:
-
-      - Compilation failure
-      - Panic
-      - Default to another implementation
-
-    All interfaces in this API embed a corresponding interface from
-    [go.opentelemetry.io/otel/trace/embedded]. If an author wants the default
-    behavior of their implementations to be a compilation failure, signaling to
-    their users they need to update to the latest version of that implementation,
-    they need to embed the corresponding interface from
-    [go.opentelemetry.io/otel/trace/embedded] in their implementation. For
-    example,
-
-    	import "go.opentelemetry.io/otel/trace/embedded"
-
-    	type TracerProvider struct {
-    		embedded.TracerProvider
-    		// ...
-    	}
-
-    If an author wants the default behavior of their implementations to panic, they
-    can embed the API interface directly.
-
-    	import "go.opentelemetry.io/otel/trace"
-
-    	type TracerProvider struct {
-    		trace.TracerProvider
-    		// ...
-    	}
-
-    This option is not recommended. It will lead to publishing packages that
-    contain runtime panics when users update to newer versions of
-    [go.opentelemetry.io/otel/trace], which may be done with a transitive
-    dependency.
-
-    Finally, an author can embed another implementation in theirs. The embedded
-    implementation will be used for methods not defined by the author. For example,
-    an author who wants to default to silently dropping the call can use
-    [go.opentelemetry.io/otel/trace/noop]:
-
-    	import "go.opentelemetry.io/otel/trace/noop"
-
-    	type TracerProvider struct {
-    		noop.TracerProvider
-    		// ...
-    	}
-
-    It is strongly recommended that authors only embed
-    [go.opentelemetry.io/otel/trace/noop] if they choose this default behavior.
-    That implementation is the only one OpenTelemetry authors can guarantee will
-    fully implement all the API interfaces when a user updates their API.
-  semantic_conventions:
-    - go.opentelemetry.io/otel/semconv/v1.37.0
-  library_link: https://pkg.go.dev/github.com/google/go-cmp
-  source_path: trace
-  minimum_go_version: 1.24.0
-  scope:
-    name: go.opentelemetry.io/otel/trace
-  target_versions:
-    library: v0.7.0
 - repository: opentelemetry-go-contrib
   name: otellambda
   display_name: Lambda
@@ -1563,7 +29,7 @@
               type: STRING
 - repository: opentelemetry-go-contrib
   name: xrayconfig
-  display_name: Xrayconfig
+  display_name: X-Ray Config
   description: Package xrayconfig provides AWS XRAY configuration for otellambda.
   library_link: https://pkg.go.dev/github.com/aws/aws-lambda-go
   source_path: instrumentation/github.com/aws/aws-lambda-go/otellambda/xrayconfig
@@ -1574,7 +40,7 @@
     library: v1.50.0
 - repository: opentelemetry-go-contrib
   name: otelaws
-  display_name: Aws
+  display_name: AWS
   description: Package otelaws provides instrumentation for the AWS SDK.
   semantic_conventions:
     - FAAS_SPANS
@@ -1584,7 +50,7 @@
   scope:
     name: go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-sdk-go-v2/otelaws
   target_versions:
-    library: v1.39.4
+    library: v1.39.5
   telemetry:
     - when: default
       spans:
@@ -1602,7 +68,7 @@
               type: LONG
 - repository: opentelemetry-go-contrib
   name: otelrestful
-  display_name: Restful
+  display_name: RESTful
   description: |-
     Package otelrestful instruments github.com/emicklei/go-restful.
 
@@ -1836,20 +302,6 @@
             - name: network.peer.address
               type: STRING
       metrics:
-        - name: http.server.request.body.size
-          type: HISTOGRAM
-          unit: By
-          attributes:
-            - name: http.request.method
-              type: STRING
-            - name: http.response.status_code
-              type: LONG
-            - name: http.route
-              type: STRING
-            - name: network.protocol.version
-              type: STRING
-            - name: url.scheme
-              type: STRING
         - name: http.server.response.body.size
           type: HISTOGRAM
           unit: By
@@ -1867,6 +319,20 @@
         - name: http.server.request.duration
           type: HISTOGRAM
           unit: s
+          attributes:
+            - name: http.request.method
+              type: STRING
+            - name: http.response.status_code
+              type: LONG
+            - name: http.route
+              type: STRING
+            - name: network.protocol.version
+              type: STRING
+            - name: url.scheme
+              type: STRING
+        - name: http.server.request.body.size
+          type: HISTOGRAM
+          unit: By
           attributes:
             - name: http.request.method
               type: STRING
@@ -1926,6 +392,8 @@
               type: STRING
             - name: network.peer.address
               type: STRING
+            - name: echo.error
+              type: STRING
       metrics:
         - name: http.server.request.duration
           type: HISTOGRAM
@@ -1971,7 +439,7 @@
               type: STRING
 - repository: opentelemetry-go-contrib
   name: otelmongo
-  display_name: Mongo
+  display_name: MongoDB
   description: |-
     Package otelmongo instruments go.mongodb.org/mongo-driver/mongo.
 
@@ -1995,13 +463,13 @@
     By default, otelmongo only emits v1.21.0.
   semantic_conventions:
     - DATABASE_CLIENT_SPANS
-  library_link: https://pkg.go.dev/github.com/stretchr/testify
+  library_link: https://pkg.go.dev/go.mongodb.org/mongo-driver
   source_path: instrumentation/go.mongodb.org/mongo-driver/mongo/otelmongo
   minimum_go_version: 1.24.0
   scope:
     name: go.opentelemetry.io/contrib/instrumentation/go.mongodb.org/mongo-driver/mongo/otelmongo
   target_versions:
-    library: v1.11.1
+    library: v1.17.6
   telemetry:
     - when: default
       spans:
@@ -2021,7 +489,7 @@
               type: LONG
 - repository: opentelemetry-go-contrib
   name: otelmongo
-  display_name: Mongo
+  display_name: MongoDB
   description: |-
     Package otelmongo instruments go.mongodb.org/mongo-driver/v2/mongo.
 
@@ -2032,13 +500,13 @@
     - https://github.com/open-telemetry/opentelemetry-go-contrib/tree/323e373a6c15ae310bdd0617e3ed52d8cb8e4e6f/instrumentation/go.mongodb.org/mongo-driver/mongo/otelmongo
   semantic_conventions:
     - DATABASE_CLIENT_SPANS
-  library_link: https://pkg.go.dev/github.com/stretchr/testify
+  library_link: https://pkg.go.dev/go.mongodb.org/mongo-driver/v2
   source_path: instrumentation/go.mongodb.org/mongo-driver/v2/mongo/otelmongo
   minimum_go_version: 1.24.0
   scope:
     name: go.opentelemetry.io/contrib/instrumentation/go.mongodb.org/mongo-driver/v2/mongo/otelmongo
   target_versions:
-    library: v1.11.1
+    library: v2.4.0
   telemetry:
     - when: default
       spans:
@@ -2058,7 +526,7 @@
               type: LONG
 - repository: opentelemetry-go-contrib
   name: otelgrpc
-  display_name: Grpc
+  display_name: gRPC
   description: |-
     Package otelgrpc is the instrumentation library for [google.golang.org/grpc].
 
@@ -2068,13 +536,13 @@
   semantic_conventions:
     - RPC_SERVER_SPANS
     - RPC_CLIENT_SPANS
-  library_link: https://pkg.go.dev/github.com/stretchr/testify
+  library_link: https://pkg.go.dev/google.golang.org/grpc
   source_path: instrumentation/google.golang.org/grpc/otelgrpc
   minimum_go_version: 1.24.0
   scope:
     name: go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc
   target_versions:
-    library: v1.11.1
+    library: v1.76.0
   telemetry:
     - when: default
       spans:
@@ -2159,31 +627,62 @@
     See https://github.com/open-telemetry/oteps/blob/main/text/0119-standard-system-metrics.md
     for the definition of these metric instruments.
   semantic_conventions:
-    - go.opentelemetry.io/otel/semconv/v1.37.0/systemconv
     - go.opentelemetry.io/otel/semconv/v1.37.0/processconv
+    - go.opentelemetry.io/otel/semconv/v1.37.0/systemconv
   library_link: https://pkg.go.dev/github.com/shirou/gopsutil/v4
   source_path: instrumentation/host
   minimum_go_version: 1.24.0
   scope:
     name: go.opentelemetry.io/contrib/instrumentation/host
   target_versions:
-    library: v4.25.9
+    library: v4.25.10
+  telemetry:
+    - when: default
+      metrics:
+        - name: process.cpu.time
+          type: COUNTER
+          unit: s
+          attributes:
+            - name: state
+              type: STRING
+        - name: system.cpu.time
+          type: COUNTER
+          unit: s
+          attributes:
+            - name: state
+              type: STRING
+        - name: system.memory.usage
+          type: GAUGE
+          unit: By
+          attributes:
+            - name: state
+              type: STRING
+        - name: system.memory.utilization
+          type: GAUGE
+          unit: "1"
+          attributes:
+            - name: state
+              type: STRING
+        - name: system.network.io
+          type: COUNTER
+          unit: By
+          attributes:
+            - name: direction
+              type: STRING
 - repository: opentelemetry-go-contrib
   name: otelhttptrace
-  display_name: Httptrace
+  display_name: HTTP Trace
   description: |-
     Package otelhttptrace provides instrumentation for the [net/http/httptrace]
     package.
   semantic_conventions:
     - HTTP_CLIENT_SPANS
     - HTTP_SERVER_METRICS
-  library_link: https://pkg.go.dev/github.com/google/go-cmp
   source_path: instrumentation/net/http/httptrace/otelhttptrace
   minimum_go_version: 1.24.0
   scope:
     name: go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace
-  target_versions:
-    library: v0.7.0
+  target_versions: {}
   telemetry:
     - when: default
       spans:
@@ -2204,20 +703,6 @@
             - name: network.protocol.version
               type: STRING
       metrics:
-        - name: http.server.request.duration
-          type: HISTOGRAM
-          unit: s
-          attributes:
-            - name: http.request.method
-              type: STRING
-            - name: http.response.status_code
-              type: LONG
-            - name: http.route
-              type: STRING
-            - name: network.protocol.version
-              type: STRING
-            - name: url.scheme
-              type: STRING
         - name: http.server.request.body.size
           type: HISTOGRAM
           unit: By
@@ -2246,9 +731,23 @@
               type: STRING
             - name: url.scheme
               type: STRING
+        - name: http.server.request.duration
+          type: HISTOGRAM
+          unit: s
+          attributes:
+            - name: http.request.method
+              type: STRING
+            - name: http.response.status_code
+              type: LONG
+            - name: http.route
+              type: STRING
+            - name: network.protocol.version
+              type: STRING
+            - name: url.scheme
+              type: STRING
 - repository: opentelemetry-go-contrib
   name: otelhttp
-  display_name: Http
+  display_name: HTTP
   description: |-
     Package otelhttp provides an http.Handler and functions that are intended
     to be used to add tracing by wrapping existing handlers (with Handler) and
@@ -2371,14 +870,35 @@
     	runtime.uptime               (ms)       Milliseconds since application was initialized
   semantic_conventions:
     - go.opentelemetry.io/otel/semconv/v1.37.0/goconv
-  library_link: https://pkg.go.dev/github.com/stretchr/testify
   source_path: instrumentation/runtime
   minimum_go_version: 1.24.0
   scope:
     name: go.opentelemetry.io/contrib/instrumentation/runtime
-  target_versions:
-    library: v1.11.1
+  target_versions: {}
   telemetry:
     - when: default
-      spans:
-        - kind: INTERNAL
+      metrics:
+        - name: go.memory.allocated
+          type: COUNTER
+          unit: By
+        - name: go.memory.allocations
+          type: COUNTER
+          unit: '{allocation}'
+        - name: go.memory.gc.goal
+          type: GAUGE
+          unit: By
+        - name: go.goroutine.count
+          type: GAUGE
+          unit: '{goroutine}'
+        - name: go.processor.limit
+          type: GAUGE
+          unit: '{thread}'
+        - name: go.config.gogc
+          type: GAUGE
+          unit: '%'
+        - name: go.memory.used
+          type: GAUGE
+          unit: By
+        - name: go.memory.limit
+          type: GAUGE
+          unit: By

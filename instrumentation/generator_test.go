@@ -25,7 +25,7 @@ func TestGenerate(t *testing.T) {
 				Scope: Scope{
 					Name: "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin",
 				},
-				TargetVersions: TargetVersions{
+				TargetVersions: &TargetVersions{
 					Library: "v1.11.0",
 				},
 				LibraryLink: "https://pkg.go.dev/github.com/gin-gonic/gin",

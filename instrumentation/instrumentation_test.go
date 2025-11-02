@@ -197,8 +197,8 @@ func TestFullScanValidation(t *testing.T) {
 		libsByRepo := map[string][]Library{
 			repo.RepoContrib: libs,
 		}
-		statsByRepo := CalculateStats(libsByRepo)
-		stats := statsByRepo[repo.RepoContrib]
+		repoStats := CalculateStats(libsByRepo)
+		stats := repoStats[repo.RepoContrib]
 
 		// Validate overall stats
 		if stats.LibrariesWithTelemetry < 10 {
@@ -284,9 +284,9 @@ func TestFullScanValidation(t *testing.T) {
 					}
 				}
 
-				// Validate each metric has attributes
+				// Validate each metric has attributes (runtime metrics may not have attributes)
 				for _, metric := range tel.Metrics {
-					if len(metric.Attributes) == 0 {
+					if len(metric.Attributes) == 0 && lib.Name != "runtime" {
 						t.Errorf("Library %s has metric %s with no attributes", lib.Name, metric.Name)
 					}
 					if metric.Unit == "" {

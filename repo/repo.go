@@ -22,7 +22,6 @@ const (
 )
 
 var repos = []string{
-	"git@github.com:open-telemetry/opentelemetry-go.git",
 	"git@github.com:open-telemetry/opentelemetry-go-contrib.git",
 }
 

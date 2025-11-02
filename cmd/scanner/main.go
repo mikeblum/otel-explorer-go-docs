@@ -10,6 +10,7 @@ import (
 
 func main() {
 	log := conf.NewLog()
+	log.Info("🔭OTel Ecosystem Explorer: Golang 🔭")
 	repoInfos, err := repo.Checkout()
 	if err != nil {
 		log.WithErrorMsg(err, "Error checking out otel repos, exiting...")
@@ -34,9 +35,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	statsByRepo := instrumentation.CalculateStats(libsByRepo)
-	for repoName, stats := range statsByRepo {
-		log.Info("Scan complete",
+	repoStats := instrumentation.CalculateStats(libsByRepo)
+	for repoName, stats := range repoStats {
+		log.Info("Scan complete ✅",
 			"repo", repoName,
 			"instrumentation", stats)
 	}

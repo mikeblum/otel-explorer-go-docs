@@ -16,6 +16,29 @@ const (
 	pkgGoDevHost = "pkg.go.dev"
 )
 
+var testDependencies = map[string]bool{
+	"github.com/stretchr/testify":   true,
+	"github.com/google/go-cmp":      true,
+	"github.com/davecgh/go-spew":    true,
+	"github.com/pmezard/go-difflib": true,
+}
+
+var displayNameMap = map[string]string{
+	"aws":        "AWS",
+	"grpc":       "gRPC",
+	"http":       "HTTP",
+	"httptrace":  "HTTP Trace",
+	"gin":        "Gin",
+	"echo":       "Echo",
+	"mux":        "Mux",
+	"mongo":      "MongoDB",
+	"restful":    "RESTful",
+	"lambda":     "Lambda",
+	"xrayconfig": "X-Ray Config",
+	"host":       "Host",
+	"runtime":    "Runtime",
+}
+
 func Parse(goModPath string, repoRoot string, repoName string) (*Library, error) {
 	data, err := os.ReadFile(goModPath)
 	if err != nil {
@@ -51,8 +74,13 @@ func Parse(goModPath string, repoRoot string, repoName string) (*Library, error)
 		if strings.HasPrefix(req.Mod.Path, otelPrefix) {
 			continue
 		}
+		if testDependencies[req.Mod.Path] {
+			continue
+		}
 
-		lib.TargetVersions.Library = req.Mod.Version
+		lib.TargetVersions = &TargetVersions{
+			Library: req.Mod.Version,
+		}
 		lib.LibraryLink = buildLibraryLink(req.Mod.Path)
 		break
 	}
@@ -82,6 +110,11 @@ func generateDisplayName(pkgName string) string {
 	if len(name) == 0 {
 		return ""
 	}
+
+	if displayName, ok := displayNameMap[name]; ok {
+		return displayName
+	}
+
 	return strings.ToUpper(name[:1]) + name[1:]
 }
 
