@@ -18,15 +18,15 @@ go.work.sum
 .env
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
 
 # upstream opentelemetry repos
 opentelemetry-go*
 
 # build
 otel-explorer-go-docs
-instrumentation-list.yaml
+# instrumentation-list.yaml
 
 # llms
 CLAUDE.md

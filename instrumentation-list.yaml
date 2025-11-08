@@ -1,0 +1,698 @@
+- repository: opentelemetry-go-contrib
+  name: otellambda
+  display_name: Lambda
+  description: |-
+    Package otellambda instruments the github.com/aws/aws-lambda-go package.
+
+    Two wrappers are provided which can be used to instrument Lambda,
+    one for each Lambda entrypoint. Their usages are shown below.
+
+    lambda.Start(<user function>) entrypoint: lambda.Start(otellambda.InstrumentHandler(<user function>))
+    lambda.StartHandler(<user Handler>) entrypoint: lambda.StartHandler(otellambda.WrapHandler(<user Handler>))
+  semantic_conventions:
+    - FAAS_SPANS
+  library_link: https://pkg.go.dev/github.com/aws/aws-lambda-go
+  source_path: instrumentation/github.com/aws/aws-lambda-go/otellambda
+  minimum_go_version: 1.24.0
+  scope:
+    name: go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-lambda-go/otellambda
+  target_versions:
+    library: v1.50.0
+  telemetry:
+    - when: default
+      spans:
+        - kind: INTERNAL
+- repository: opentelemetry-go-contrib
+  name: xrayconfig
+  display_name: X-Ray Config
+  description: Package xrayconfig provides AWS XRAY configuration for otellambda.
+  library_link: https://pkg.go.dev/github.com/aws/aws-lambda-go
+  source_path: instrumentation/github.com/aws/aws-lambda-go/otellambda/xrayconfig
+  minimum_go_version: 1.24.0
+  scope:
+    name: go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-lambda-go/otellambda/xrayconfig
+  target_versions:
+    library: v1.50.0
+- repository: opentelemetry-go-contrib
+  name: otelaws
+  display_name: AWS
+  description: Package otelaws provides instrumentation for the AWS SDK.
+  semantic_conventions:
+    - FAAS_SPANS
+  library_link: https://pkg.go.dev/github.com/aws/aws-sdk-go-v2
+  source_path: instrumentation/github.com/aws/aws-sdk-go-v2/otelaws
+  minimum_go_version: 1.24.0
+  scope:
+    name: go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-sdk-go-v2/otelaws
+  target_versions:
+    library: v1.39.5
+  telemetry:
+    - when: default
+      spans:
+        - kind: INTERNAL
+- repository: opentelemetry-go-contrib
+  name: otelrestful
+  display_name: RESTful
+  description: |-
+    Package otelrestful instruments github.com/emicklei/go-restful.
+
+    Instrumentation is provided to trace the emicklei/go-restful/v3
+    package (https://github.com/emicklei/go-restful).
+
+    Instrumentation of an incoming request is achieved via a go-restful
+    FilterFunc called `OTelFilterFunc` which may be applied at any one of
+      - the container level
+      - webservice level
+      - route level
+  semantic_conventions:
+    - HTTP_SERVER_SPANS
+    - HTTP_SERVER_METRICS
+  library_link: https://pkg.go.dev/github.com/emicklei/go-restful/v3
+  source_path: instrumentation/github.com/emicklei/go-restful/otelrestful
+  minimum_go_version: 1.24.0
+  scope:
+    name: go.opentelemetry.io/contrib/instrumentation/github.com/emicklei/go-restful/otelrestful
+  target_versions:
+    library: v3.13.0
+  telemetry:
+    - when: default
+      spans:
+        - kind: INTERNAL
+      metrics:
+        - name: http.server.request.duration
+          type: HISTOGRAM
+          unit: s
+          attributes:
+            - name: http.request.method
+              type: STRING
+            - name: http.response.status_code
+              type: LONG
+            - name: http.route
+              type: STRING
+            - name: network.protocol.version
+              type: STRING
+            - name: url.scheme
+              type: STRING
+        - name: http.server.request.body.size
+          type: HISTOGRAM
+          unit: By
+          attributes:
+            - name: http.request.method
+              type: STRING
+            - name: http.response.status_code
+              type: LONG
+            - name: http.route
+              type: STRING
+            - name: network.protocol.version
+              type: STRING
+            - name: url.scheme
+              type: STRING
+        - name: http.server.response.body.size
+          type: HISTOGRAM
+          unit: By
+          attributes:
+            - name: http.request.method
+              type: STRING
+            - name: http.response.status_code
+              type: LONG
+            - name: http.route
+              type: STRING
+            - name: network.protocol.version
+              type: STRING
+            - name: url.scheme
+              type: STRING
+- repository: opentelemetry-go-contrib
+  name: otelgin
+  display_name: Gin
+  description: |-
+    Package otelgin instruments the github.com/gin-gonic/gin package.
+
+    Currently there are two ways the code can be instrumented. One is
+    instrumenting the routing of a received message (the Middleware function)
+    and instrumenting the response generation through template evaluation (the
+    HTML function).
+  semantic_conventions:
+    - HTTP_SERVER_SPANS
+    - HTTP_SERVER_METRICS
+  library_link: https://pkg.go.dev/github.com/gin-gonic/gin
+  source_path: instrumentation/github.com/gin-gonic/gin/otelgin
+  minimum_go_version: 1.24.0
+  scope:
+    name: go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin
+  target_versions:
+    library: v1.11.0
+  telemetry:
+    - when: default
+      spans:
+        - kind: INTERNAL
+      metrics:
+        - name: http.server.request.body.size
+          type: HISTOGRAM
+          unit: By
+          attributes:
+            - name: http.request.method
+              type: STRING
+            - name: http.response.status_code
+              type: LONG
+            - name: http.route
+              type: STRING
+            - name: network.protocol.version
+              type: STRING
+            - name: url.scheme
+              type: STRING
+        - name: http.server.response.body.size
+          type: HISTOGRAM
+          unit: By
+          attributes:
+            - name: http.request.method
+              type: STRING
+            - name: http.response.status_code
+              type: LONG
+            - name: http.route
+              type: STRING
+            - name: network.protocol.version
+              type: STRING
+            - name: url.scheme
+              type: STRING
+        - name: http.server.request.duration
+          type: HISTOGRAM
+          unit: s
+          attributes:
+            - name: http.request.method
+              type: STRING
+            - name: http.response.status_code
+              type: LONG
+            - name: http.route
+              type: STRING
+            - name: network.protocol.version
+              type: STRING
+            - name: url.scheme
+              type: STRING
+- repository: opentelemetry-go-contrib
+  name: otelmux
+  display_name: Mux
+  description: |-
+    Package otelmux instruments the github.com/gorilla/mux package.
+
+    Currently only the routing of a received message can be instrumented. To do
+    it, use the Middleware function.
+  semantic_conventions:
+    - HTTP_SERVER_SPANS
+    - HTTP_SERVER_METRICS
+  library_link: https://pkg.go.dev/github.com/felixge/httpsnoop
+  source_path: instrumentation/github.com/gorilla/mux/otelmux
+  minimum_go_version: 1.24.0
+  scope:
+    name: go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux
+  target_versions:
+    library: v1.0.4
+  telemetry:
+    - when: default
+      spans:
+        - kind: INTERNAL
+      metrics:
+        - name: http.server.request.duration
+          type: HISTOGRAM
+          unit: s
+          attributes:
+            - name: http.request.method
+              type: STRING
+            - name: http.response.status_code
+              type: LONG
+            - name: http.route
+              type: STRING
+            - name: network.protocol.version
+              type: STRING
+            - name: url.scheme
+              type: STRING
+        - name: http.server.request.body.size
+          type: HISTOGRAM
+          unit: By
+          attributes:
+            - name: http.request.method
+              type: STRING
+            - name: http.response.status_code
+              type: LONG
+            - name: http.route
+              type: STRING
+            - name: network.protocol.version
+              type: STRING
+            - name: url.scheme
+              type: STRING
+        - name: http.server.response.body.size
+          type: HISTOGRAM
+          unit: By
+          attributes:
+            - name: http.request.method
+              type: STRING
+            - name: http.response.status_code
+              type: LONG
+            - name: http.route
+              type: STRING
+            - name: network.protocol.version
+              type: STRING
+            - name: url.scheme
+              type: STRING
+- repository: opentelemetry-go-contrib
+  name: otelecho
+  display_name: Echo
+  description: |-
+    Package otelecho instruments the labstack/echo package
+    (https://github.com/labstack/echo).
+
+    Currently only the routing of a received message can be instrumented. To do
+    so, use the Middleware function.
+  semantic_conventions:
+    - HTTP_SERVER_SPANS
+    - HTTP_SERVER_METRICS
+  library_link: https://pkg.go.dev/github.com/labstack/echo/v4
+  source_path: instrumentation/github.com/labstack/echo/otelecho
+  minimum_go_version: 1.24.0
+  scope:
+    name: go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho
+  target_versions:
+    library: v4.13.4
+  telemetry:
+    - when: default
+      spans:
+        - kind: INTERNAL
+          attributes:
+            - name: echo.error
+              type: STRING
+      metrics:
+        - name: http.server.request.duration
+          type: HISTOGRAM
+          unit: s
+          attributes:
+            - name: http.request.method
+              type: STRING
+            - name: http.response.status_code
+              type: LONG
+            - name: http.route
+              type: STRING
+            - name: network.protocol.version
+              type: STRING
+            - name: url.scheme
+              type: STRING
+        - name: http.server.request.body.size
+          type: HISTOGRAM
+          unit: By
+          attributes:
+            - name: http.request.method
+              type: STRING
+            - name: http.response.status_code
+              type: LONG
+            - name: http.route
+              type: STRING
+            - name: network.protocol.version
+              type: STRING
+            - name: url.scheme
+              type: STRING
+        - name: http.server.response.body.size
+          type: HISTOGRAM
+          unit: By
+          attributes:
+            - name: http.request.method
+              type: STRING
+            - name: http.response.status_code
+              type: LONG
+            - name: http.route
+              type: STRING
+            - name: network.protocol.version
+              type: STRING
+            - name: url.scheme
+              type: STRING
+- repository: opentelemetry-go-contrib
+  name: otelmongo
+  display_name: MongoDB
+  description: |-
+    Package otelmongo instruments go.mongodb.org/mongo-driver/mongo.
+
+    This package is compatible with v0.2.0 of
+    go.mongodb.org/mongo-driver/mongo.
+
+    NewMonitor will return an event.CommandMonitor which is used to trace
+    requests.
+
+    This code was originally based on the following:
+      - https://github.com/DataDog/dd-trace-go/tree/02f0449efa3cb382d499fadc873957385dcb2192/contrib/go.mongodb.org/mongo-driver/mongo
+      - https://github.com/DataDog/dd-trace-go/tree/v1.23.3/ddtrace/ext
+
+    The "OTEL_SEMCONV_STABILITY_OPT_IN" environment variable can be used to opt
+    into the latest semantic conventions:
+      - "database": emit the latest semantic conventions
+      - "": emit v1.21.0 (default) semantic conventions
+      - "database/dup": emit v1.21.0 (default) and the latest semantic
+        conventions
+
+    By default, otelmongo only emits v1.21.0.
+  semantic_conventions:
+    - DATABASE_CLIENT_SPANS
+  library_link: https://pkg.go.dev/go.mongodb.org/mongo-driver
+  source_path: instrumentation/go.mongodb.org/mongo-driver/mongo/otelmongo
+  minimum_go_version: 1.24.0
+  scope:
+    name: go.opentelemetry.io/contrib/instrumentation/go.mongodb.org/mongo-driver/mongo/otelmongo
+  target_versions:
+    library: v1.17.6
+  telemetry:
+    - when: default
+      spans:
+        - kind: INTERNAL
+- repository: opentelemetry-go-contrib
+  name: otelmongo
+  display_name: MongoDB
+  description: |-
+    Package otelmongo instruments go.mongodb.org/mongo-driver/v2/mongo.
+
+    `NewMonitor` will return an event.CommandMonitor which is used to trace
+    requests.
+
+    This code was originally based on the following:
+    - https://github.com/open-telemetry/opentelemetry-go-contrib/tree/323e373a6c15ae310bdd0617e3ed52d8cb8e4e6f/instrumentation/go.mongodb.org/mongo-driver/mongo/otelmongo
+  semantic_conventions:
+    - DATABASE_CLIENT_SPANS
+  library_link: https://pkg.go.dev/go.mongodb.org/mongo-driver/v2
+  source_path: instrumentation/go.mongodb.org/mongo-driver/v2/mongo/otelmongo
+  minimum_go_version: 1.24.0
+  scope:
+    name: go.opentelemetry.io/contrib/instrumentation/go.mongodb.org/mongo-driver/v2/mongo/otelmongo
+  target_versions:
+    library: v2.4.0
+  telemetry:
+    - when: default
+      spans:
+        - kind: INTERNAL
+- repository: opentelemetry-go-contrib
+  name: otelgrpc
+  display_name: gRPC
+  description: |-
+    Package otelgrpc is the instrumentation library for [google.golang.org/grpc].
+
+    Use [NewClientHandler] with [grpc.WithStatsHandler] to instrument a gRPC client.
+
+    Use [NewServerHandler] with [grpc.StatsHandler] to instrument a gRPC server.
+  semantic_conventions:
+    - RPC_SERVER_SPANS
+    - RPC_CLIENT_SPANS
+  library_link: https://pkg.go.dev/google.golang.org/grpc
+  source_path: instrumentation/google.golang.org/grpc/otelgrpc
+  minimum_go_version: 1.24.0
+  scope:
+    name: go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc
+  target_versions:
+    library: v1.76.0
+  telemetry:
+    - when: default
+      spans:
+        - kind: INTERNAL
+      metrics:
+        - name: rpc.server.duration
+          type: HISTOGRAM
+          unit: ms
+          attributes:
+            - name: rpc.method
+              type: STRING
+            - name: rpc.service
+              type: STRING
+            - name: rpc.system
+              type: STRING
+        - name: rpc.server.request.size
+          type: HISTOGRAM
+          unit: By
+          attributes:
+            - name: rpc.method
+              type: STRING
+            - name: rpc.service
+              type: STRING
+            - name: rpc.system
+              type: STRING
+        - name: rpc.server.response.size
+          type: HISTOGRAM
+          unit: By
+          attributes:
+            - name: rpc.method
+              type: STRING
+            - name: rpc.service
+              type: STRING
+            - name: rpc.system
+              type: STRING
+- repository: opentelemetry-go-contrib
+  name: host
+  display_name: Host
+  description: |-
+    Package host provides the conventional host metric instruments
+    specified by OpenTelemetry.  Host metric events are sometimes
+    collected through the OpenTelemetry Collector "hostmetrics"
+    receiver running as an agent; this instrumentation is an
+    alternative for processes that want to record the same information
+    without an agent.
+
+    The metric events produced are listed here with attribute dimensions.
+
+    	Name			Attribute
+
+    ----------------------------------------------------------------------
+
+    	process.cpu.time           state=user|system
+    	system.cpu.time            state=user|system|other|idle
+    	system.memory.usage        state=used|available
+    	system.memory.utilization  state=used|available
+    	system.network.io          direction=transmit|receive
+
+    See https://github.com/open-telemetry/oteps/blob/main/text/0119-standard-system-metrics.md
+    for the definition of these metric instruments.
+  semantic_conventions:
+    - go.opentelemetry.io/otel/semconv/v1.37.0/systemconv
+    - go.opentelemetry.io/otel/semconv/v1.37.0/processconv
+  library_link: https://pkg.go.dev/github.com/shirou/gopsutil/v4
+  source_path: instrumentation/host
+  minimum_go_version: 1.24.0
+  scope:
+    name: go.opentelemetry.io/contrib/instrumentation/host
+  target_versions:
+    library: v4.25.10
+  telemetry:
+    - when: default
+      metrics:
+        - name: system.cpu.time
+          type: COUNTER
+          unit: s
+          attributes:
+            - name: state
+              type: STRING
+        - name: system.memory.usage
+          type: GAUGE
+          unit: By
+          attributes:
+            - name: state
+              type: STRING
+        - name: system.memory.utilization
+          type: GAUGE
+          unit: "1"
+          attributes:
+            - name: state
+              type: STRING
+        - name: system.network.io
+          type: COUNTER
+          unit: By
+          attributes:
+            - name: direction
+              type: STRING
+        - name: process.cpu.time
+          type: COUNTER
+          unit: s
+          attributes:
+            - name: state
+              type: STRING
+- repository: opentelemetry-go-contrib
+  name: otelhttptrace
+  display_name: HTTP Trace
+  description: |-
+    Package otelhttptrace provides instrumentation for the [net/http/httptrace]
+    package.
+  semantic_conventions:
+    - HTTP_CLIENT_SPANS
+    - HTTP_SERVER_METRICS
+  source_path: instrumentation/net/http/httptrace/otelhttptrace
+  minimum_go_version: 1.24.0
+  scope:
+    name: go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace
+  telemetry:
+    - when: default
+      spans:
+        - kind: INTERNAL
+      metrics:
+        - name: http.server.request.duration
+          type: HISTOGRAM
+          unit: s
+          attributes:
+            - name: http.request.method
+              type: STRING
+            - name: http.response.status_code
+              type: LONG
+            - name: http.route
+              type: STRING
+            - name: network.protocol.version
+              type: STRING
+            - name: url.scheme
+              type: STRING
+        - name: http.server.request.body.size
+          type: HISTOGRAM
+          unit: By
+          attributes:
+            - name: http.request.method
+              type: STRING
+            - name: http.response.status_code
+              type: LONG
+            - name: http.route
+              type: STRING
+            - name: network.protocol.version
+              type: STRING
+            - name: url.scheme
+              type: STRING
+        - name: http.server.response.body.size
+          type: HISTOGRAM
+          unit: By
+          attributes:
+            - name: http.request.method
+              type: STRING
+            - name: http.response.status_code
+              type: LONG
+            - name: http.route
+              type: STRING
+            - name: network.protocol.version
+              type: STRING
+            - name: url.scheme
+              type: STRING
+- repository: opentelemetry-go-contrib
+  name: otelhttp
+  display_name: HTTP
+  description: |-
+    Package otelhttp provides an http.Handler and functions that are intended
+    to be used to add tracing by wrapping existing handlers (with Handler) and
+    routes WithRouteTag.
+  semantic_conventions:
+    - HTTP_CLIENT_SPANS
+    - HTTP_SERVER_METRICS
+  library_link: https://pkg.go.dev/github.com/felixge/httpsnoop
+  source_path: instrumentation/net/http/otelhttp
+  minimum_go_version: 1.24.0
+  scope:
+    name: go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
+  target_versions:
+    library: v1.0.4
+  telemetry:
+    - when: default
+      spans:
+        - kind: INTERNAL
+      metrics:
+        - name: http.server.request.duration
+          type: HISTOGRAM
+          unit: s
+          attributes:
+            - name: http.request.method
+              type: STRING
+            - name: http.response.status_code
+              type: LONG
+            - name: http.route
+              type: STRING
+            - name: network.protocol.version
+              type: STRING
+            - name: url.scheme
+              type: STRING
+        - name: http.server.request.body.size
+          type: HISTOGRAM
+          unit: By
+          attributes:
+            - name: http.request.method
+              type: STRING
+            - name: http.response.status_code
+              type: LONG
+            - name: http.route
+              type: STRING
+            - name: network.protocol.version
+              type: STRING
+            - name: url.scheme
+              type: STRING
+        - name: http.server.response.body.size
+          type: HISTOGRAM
+          unit: By
+          attributes:
+            - name: http.request.method
+              type: STRING
+            - name: http.response.status_code
+              type: LONG
+            - name: http.route
+              type: STRING
+            - name: network.protocol.version
+              type: STRING
+            - name: url.scheme
+              type: STRING
+- repository: opentelemetry-go-contrib
+  name: runtime
+  display_name: Runtime
+  description: |-
+    Package runtime implements the conventional runtime metrics specified by OpenTelemetry.
+
+    The metric events produced are:
+
+    	go.memory.used          By            Memory used by the Go runtime.
+    	go.memory.limit         By            Go runtime memory limit configured by the user, if a limit exists.
+    	go.memory.allocated     By            Memory allocated to the heap by the application.
+    	go.memory.allocations   {allocation}  Count of allocations to the heap by the application.
+    	go.memory.gc.goal       By            Heap size target for the end of the GC cycle.
+    	go.goroutine.count      {goroutine}   Count of live goroutines.
+    	go.processor.limit      {thread}      The number of OS threads that can execute user-level Go code simultaneously.
+    	go.config.gogc          %             Heap size target percentage configured by the user, otherwise 100.
+
+    When the OTEL_GO_X_DEPRECATED_RUNTIME_METRICS environment variable is set to
+    true, the following deprecated metrics are produced:
+
+    	runtime.go.cgo.calls         -          Number of cgo calls made by the current process
+    	runtime.go.gc.count          -          Number of completed garbage collection cycles
+    	runtime.go.gc.pause_ns       (ns)       Amount of nanoseconds in GC stop-the-world pauses
+    	runtime.go.gc.pause_total_ns (ns)       Cumulative nanoseconds in GC stop-the-world pauses since the program started
+    	runtime.go.goroutines        -          Number of goroutines that currently exist
+    	runtime.go.lookups           -          Number of pointer lookups performed by the runtime
+    	runtime.go.mem.heap_alloc    (bytes)    Bytes of allocated heap objects
+    	runtime.go.mem.heap_idle     (bytes)    Bytes in idle (unused) spans
+    	runtime.go.mem.heap_inuse    (bytes)    Bytes in in-use spans
+    	runtime.go.mem.heap_objects  -          Number of allocated heap objects
+    	runtime.go.mem.heap_released (bytes)    Bytes of idle spans whose physical memory has been returned to the OS
+    	runtime.go.mem.heap_sys      (bytes)    Bytes of heap memory obtained from the OS
+    	runtime.go.mem.live_objects  -          Number of live objects is the number of cumulative Mallocs - Frees
+    	runtime.uptime               (ms)       Milliseconds since application was initialized
+  semantic_conventions:
+    - go.opentelemetry.io/otel/semconv/v1.37.0/goconv
+  source_path: instrumentation/runtime
+  minimum_go_version: 1.24.0
+  scope:
+    name: go.opentelemetry.io/contrib/instrumentation/runtime
+  telemetry:
+    - when: default
+      metrics:
+        - name: go.memory.allocations
+          type: COUNTER
+          unit: '{allocation}'
+        - name: go.memory.gc.goal
+          type: GAUGE
+          unit: By
+        - name: go.goroutine.count
+          type: GAUGE
+          unit: '{goroutine}'
+        - name: go.processor.limit
+          type: GAUGE
+          unit: '{thread}'
+        - name: go.config.gogc
+          type: GAUGE
+          unit: '%'
+        - name: go.memory.used
+          type: GAUGE
+          unit: By
+        - name: go.memory.limit
+          type: GAUGE
+          unit: By
+        - name: go.memory.allocated
+          type: COUNTER
+          unit: By

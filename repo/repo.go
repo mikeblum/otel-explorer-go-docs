@@ -17,11 +17,11 @@ const (
 	perms     = 0755
 	shaLength = 8
 
+	RepoGo      = "opentelemetry-go"
 	RepoContrib = "opentelemetry-go-contrib"
 )
 
 var repos = []string{
-	"git@github.com:open-telemetry/opentelemetry-go.git",
 	"git@github.com:open-telemetry/opentelemetry-go-contrib.git",
 }
 

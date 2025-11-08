@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/mikeblum/otel-explorer-go-docs/repo"
 	"gopkg.in/yaml.v3"
 )
 
@@ -24,7 +25,7 @@ func TestGenerate(t *testing.T) {
 				Scope: Scope{
 					Name: "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin",
 				},
-				TargetVersions: TargetVersions{
+				TargetVersions: &TargetVersions{
 					Library: "v1.11.0",
 				},
 				LibraryLink: "https://pkg.go.dev/github.com/gin-gonic/gin",
@@ -104,13 +105,17 @@ require (
 			t.Fatal(err)
 		}
 
-		libraries, err := Scan(tmpDir)
+		libraries, err := Scan(repo.RepoContrib, tmpDir)
 		if err != nil {
 			t.Fatalf("Scan() error = %v", err)
 		}
 
 		if got := len(libraries); got != 1 {
 			t.Fatalf("Scan() found %d libraries, want 1", got)
+		}
+
+		if got := libraries[0].Repository; got != repo.RepoContrib {
+			t.Errorf("Library repository = %v, want %v", got, repo.RepoContrib)
 		}
 
 		if got := libraries[0].Name; got != "otelgin" {
@@ -121,9 +126,12 @@ require (
 	t.Run("scanner - handles missing instrumentation directory", func(t *testing.T) {
 		tmpDir := t.TempDir()
 
-		_, err := Scan(tmpDir)
-		if err == nil {
-			t.Error("Scan() expected error for missing directory, got nil")
+		libraries, err := Scan(repo.RepoContrib, tmpDir)
+		if err != nil {
+			t.Fatalf("Scan() error = %v", err)
+		}
+		if got := len(libraries); got != 0 {
+			t.Errorf("Scan() found %d libraries, want 0 for missing directory", got)
 		}
 	})
 }

@@ -1,4 +1,4 @@
-## 🔭 otel-explorer-go-docs 🔭
+##r 🔭 otel-explorer-go-docs 🔭
 SHELL := /bin/bash
 MAKEFLAGS += --silent
 

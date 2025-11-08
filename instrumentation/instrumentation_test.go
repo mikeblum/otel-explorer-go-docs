@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/mikeblum/otel-explorer-go-docs/repo"
 )
 
 func getRepoPath(t *testing.T) string {
@@ -75,8 +77,8 @@ func TestGinInstrumentation(t *testing.T) {
 	}
 
 	span := tel.Spans[0]
-	if span.Kind != "SERVER" {
-		t.Errorf("Span kind = %v, want SERVER", span.Kind)
+	if span.Kind != SpanKindServer {
+		t.Errorf("Span kind = %v, want %s", span.Kind, SpanKindServer)
 	}
 
 	assertSpanHasAttribute(t, span.Attributes, "http.request.method")
@@ -150,8 +152,8 @@ func TestRestfulInstrumentation(t *testing.T) {
 	}
 
 	span := tel.Spans[0]
-	if span.Kind != "SERVER" {
-		t.Errorf("Span kind = %v, want SERVER", span.Kind)
+	if span.Kind != SpanKindServer {
+		t.Errorf("Span kind = %v, want %s", span.Kind, SpanKindServer)
 	}
 
 	assertSpanHasAttribute(t, span.Attributes, "http.request.method")
@@ -183,7 +185,7 @@ func TestLambdaInstrumentation(t *testing.T) {
 func TestFullScanValidation(t *testing.T) {
 	t.Run("scan all instrumentation packages", func(t *testing.T) {
 		repoPath := getRepoPath(t)
-		libs, err := Scan(repoPath)
+		libs, err := Scan(repo.RepoContrib, repoPath)
 		if err != nil {
 			t.Fatalf("Scan() error = %v", err)
 		}
@@ -192,37 +194,49 @@ func TestFullScanValidation(t *testing.T) {
 			t.Errorf("Total libraries = %d, want 14", got)
 		}
 
-		stats := CalculateStats(libs)
+		libsByRepo := map[string][]Library{
+			repo.RepoContrib: libs,
+		}
+		repoStats := CalculateStats(libsByRepo)
+		stats := repoStats[repo.RepoContrib]
+
+		expected := Stats{
+			LibrariesWithTelemetry:           10,
+			LibrariesWithSemanticConventions: 12,
+			TotalSpans:                       10,
+			TotalMetrics:                     15,
+			TotalAttributes:                  150,
+		}
 
 		// Validate overall stats
-		if stats.LibrariesWithTelemetry < 10 {
+		if stats.LibrariesWithTelemetry < expected.LibrariesWithTelemetry {
 			t.Errorf("Libraries with telemetry = %d, want at least 10", stats.LibrariesWithTelemetry)
 		}
 
-		if stats.TotalSpans < 10 {
+		if stats.TotalSpans < expected.TotalSpans {
 			t.Errorf("Total spans = %d, want at least 10", stats.TotalSpans)
 		}
 
-		if stats.TotalMetrics < 15 {
-			t.Errorf("Total metrics = %d, want at least 15 (3 per HTTP/gRPC package)", stats.TotalMetrics)
+		if stats.TotalMetrics < expected.TotalMetrics {
+			t.Errorf("Total metrics = %d, want at least %d (3 per HTTP/gRPC package)", stats.TotalMetrics, expected.TotalMetrics)
 		}
 
-		if stats.TotalAttributes < 150 {
-			t.Errorf("Total attributes = %d, want at least 150", stats.TotalAttributes)
+		if stats.TotalAttributes < expected.TotalAttributes {
+			t.Errorf("Total attributes = %d, want at least %d", stats.TotalAttributes, expected.TotalAttributes)
 		}
 
 		// Validate span kinds distribution
-		if stats.SpansByKind["SERVER"] < 5 {
-			t.Errorf("SERVER spans = %d, want at least 5 (HTTP frameworks)", stats.SpansByKind["SERVER"])
+		if stats.SpansByKind[SpanKindServer] < 5 {
+			t.Errorf("SERVER spans = %d, want at least 5 (HTTP frameworks)", stats.SpansByKind[SpanKindServer])
 		}
 
-		if stats.SpansByKind["CLIENT"] < 3 {
-			t.Errorf("CLIENT spans = %d, want at least 3 (AWS, mongo, etc)", stats.SpansByKind["CLIENT"])
+		if stats.SpansByKind[SpanKindClient] < 3 {
+			t.Errorf("CLIENT spans = %d, want at least 3 (AWS, mongo, etc)", stats.SpansByKind[SpanKindClient])
 		}
 
 		// Validate semantic conventions
-		if stats.LibrariesWithSemanticConventions < 12 {
-			t.Errorf("Libraries with semantic conventions = %d, want at least 12", stats.LibrariesWithSemanticConventions)
+		if stats.LibrariesWithSemanticConventions < expected.LibrariesWithSemanticConventions {
+			t.Errorf("Libraries with semantic conventions = %d, want at least %d", stats.LibrariesWithSemanticConventions, expected.LibrariesWithSemanticConventions)
 		}
 
 		// Log detailed breakdown for debugging
@@ -233,14 +247,14 @@ func TestFullScanValidation(t *testing.T) {
 		t.Logf("  Total metrics: %d", stats.TotalMetrics)
 		t.Logf("  Total attributes: %d", stats.TotalAttributes)
 		t.Logf("  Spans by kind: SERVER=%d, CLIENT=%d, INTERNAL=%d",
-			stats.SpansByKind["SERVER"],
-			stats.SpansByKind["CLIENT"],
-			stats.SpansByKind["INTERNAL"])
+			stats.SpansByKind[SpanKindServer],
+			stats.SpansByKind[SpanKindClient],
+			stats.SpansByKind[SpanKindInternal])
 	})
 
 	t.Run("validate no duplicate telemetry", func(t *testing.T) {
 		repoPath := getRepoPath(t)
-		libs, err := Scan(repoPath)
+		libs, err := Scan(repo.RepoContrib, repoPath)
 		if err != nil {
 			t.Fatalf("Scan() error = %v", err)
 		}
@@ -248,7 +262,7 @@ func TestFullScanValidation(t *testing.T) {
 		for _, lib := range libs {
 			for _, tel := range lib.Telemetry {
 				// Check for duplicate spans
-				spanKinds := make(map[string]int)
+				spanKinds := make(map[SpanKind]int)
 				for _, span := range tel.Spans {
 					spanKinds[span.Kind]++
 				}
@@ -273,14 +287,14 @@ func TestFullScanValidation(t *testing.T) {
 
 				// Validate each span has attributes (except INTERNAL which may not)
 				for _, span := range tel.Spans {
-					if len(span.Attributes) == 0 && span.Kind != "INTERNAL" {
+					if len(span.Attributes) == 0 && span.Kind != SpanKindInternal {
 						t.Errorf("Library %s has %s span with no attributes", lib.Name, span.Kind)
 					}
 				}
 
-				// Validate each metric has attributes
+				// Validate each metric has attributes (runtime metrics may not have attributes)
 				for _, metric := range tel.Metrics {
-					if len(metric.Attributes) == 0 {
+					if len(metric.Attributes) == 0 && lib.Name != "runtime" {
 						t.Errorf("Library %s has metric %s with no attributes", lib.Name, metric.Name)
 					}
 					if metric.Unit == "" {
@@ -293,7 +307,7 @@ func TestFullScanValidation(t *testing.T) {
 
 	t.Run("validate expected packages have telemetry", func(t *testing.T) {
 		repoPath := getRepoPath(t)
-		libs, err := Scan(repoPath)
+		libs, err := Scan(repo.RepoContrib, repoPath)
 		if err != nil {
 			t.Fatalf("Scan() error = %v", err)
 		}
@@ -328,7 +342,7 @@ func TestFullScanValidation(t *testing.T) {
 
 			tel := lib.Telemetry[0]
 
-			if len(tel.Spans) != 1 || tel.Spans[0].Kind != "SERVER" {
+			if len(tel.Spans) != 1 || tel.Spans[0].Kind != SpanKindServer {
 				t.Errorf("HTTP package %s should have 1 SERVER span, got %d spans", name, len(tel.Spans))
 			}
 

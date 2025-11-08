@@ -154,8 +154,23 @@ func extractTelemetry(pkg *packages.Package) []Telemetry {
 	}}
 }
 
+func isTracerStart(callExpr *ast.CallExpr, pkg *packages.Package) bool {
+	if len(callExpr.Args) < 1 {
+		return false
+	}
+
+	firstArgType := pkg.TypesInfo.TypeOf(callExpr.Args[0])
+	if firstArgType == nil {
+		return false
+	}
+
+	typeStr := firstArgType.String()
+	return strings.Contains(typeStr, "context.Context")
+}
+
 func extractSpans(pkg *packages.Package) []Span {
-	spanMap := make(map[string]*Span)
+	spanMap := make(map[SpanKind]*Span)
+	startCallCount := 0
 
 	detectedKinds := detectSpanKindsInPackage(pkg)
 
@@ -171,12 +186,30 @@ func extractSpans(pkg *packages.Package) []Span {
 				return true
 			}
 
-			if selExpr.Sel.Name == "Start" && len(callExpr.Args) >= 2 {
+			if selExpr.Sel.Name == "Start" && len(callExpr.Args) >= 2 && isTracerStart(callExpr, pkg) {
 				extractSpanFromStart(callExpr, spanMap, pkg.PkgPath, detectedKinds)
+				startCallCount++
+			}
+
+			if selExpr.Sel.Name == "SetAttributes" {
+				extractSpanSetAttributes(callExpr, spanMap, detectedKinds)
+			}
+
+			if selExpr.Sel.Name == "AddEvent" {
+				extractSpanAddEvent(callExpr, spanMap, detectedKinds)
 			}
 
 			return true
 		})
+	}
+
+	if startCallCount > 0 && len(spanMap) == 0 && len(detectedKinds) > 0 {
+		for kind := range detectedKinds {
+			spanMap[kind] = &Span{
+				Kind:       kind,
+				Attributes: getSemConvAttributesForSpan(kind, pkg.PkgPath),
+			}
+		}
 	}
 
 	var spans []Span
@@ -187,8 +220,8 @@ func extractSpans(pkg *packages.Package) []Span {
 	return spans
 }
 
-func detectSpanKindsInPackage(pkg *packages.Package) map[string]bool {
-	kinds := make(map[string]bool)
+func detectSpanKindsInPackage(pkg *packages.Package) map[SpanKind]bool {
+	kinds := make(map[SpanKind]bool)
 
 	for _, file := range pkg.Syntax {
 		ast.Inspect(file, func(n ast.Node) bool {
@@ -197,20 +230,14 @@ func detectSpanKindsInPackage(pkg *packages.Package) map[string]bool {
 				return true
 			}
 
-			kindName := selExpr.Sel.Name
-			if strings.Contains(kindName, "SpanKindServer") || strings.Contains(kindName, "Server") {
-				kinds["SERVER"] = true
+			for _, kind := range []SpanKind{
+				SpanKindServer,
+				SpanKindClient,
+				SpanKindProducer,
+				SpanKindConsumer,
+			} {
+				kinds[kind] = hasKind(selExpr.Sel.Name, kind)
 			}
-			if strings.Contains(kindName, "SpanKindClient") || strings.Contains(kindName, "Client") {
-				kinds["CLIENT"] = true
-			}
-			if strings.Contains(kindName, "SpanKindProducer") {
-				kinds["PRODUCER"] = true
-			}
-			if strings.Contains(kindName, "SpanKindConsumer") {
-				kinds["CONSUMER"] = true
-			}
-
 			return true
 		})
 	}
@@ -218,8 +245,12 @@ func detectSpanKindsInPackage(pkg *packages.Package) map[string]bool {
 	return kinds
 }
 
-func extractSpanFromStart(callExpr *ast.CallExpr, spanMap map[string]*Span, pkgPath string, detectedKinds map[string]bool) {
-	var spanKind string
+func hasKind(kindName string, kind SpanKind) bool {
+	return strings.Contains(kindName, string(kind)) || strings.Contains(kindName, strings.ToTitle(string(kind)))
+}
+
+func extractSpanFromStart(callExpr *ast.CallExpr, spanMap map[SpanKind]*Span, pkgPath string, detectedKinds map[SpanKind]bool) {
+	var spanKind SpanKind
 	var attributes []Attribute
 
 	if len(callExpr.Args) >= 3 {
@@ -233,23 +264,23 @@ func extractSpanFromStart(callExpr *ast.CallExpr, spanMap map[string]*Span, pkgP
 	}
 
 	if spanKind == "" {
-		if detectedKinds["SERVER"] {
-			spanKind = "SERVER"
-		} else if detectedKinds["CLIENT"] {
-			spanKind = "CLIENT"
-		} else if detectedKinds["PRODUCER"] {
-			spanKind = "PRODUCER"
-		} else if detectedKinds["CONSUMER"] {
-			spanKind = "CONSUMER"
+		if detectedKinds[SpanKindServer] {
+			spanKind = SpanKindServer
+		} else if detectedKinds[SpanKindClient] {
+			spanKind = SpanKindClient
+		} else if detectedKinds[SpanKindProducer] {
+			spanKind = SpanKindProducer
+		} else if detectedKinds[SpanKindConsumer] {
+			spanKind = SpanKindConsumer
 		} else {
-			spanKind = "INTERNAL"
+			spanKind = SpanKindInternal
 		}
 	}
 
 	if _, exists := spanMap[spanKind]; !exists {
 		spanMap[spanKind] = &Span{
 			Kind:       spanKind,
-			Attributes: getStandardAttributesForSpan(spanKind, pkgPath),
+			Attributes: getSemConvAttributesForSpan(spanKind, pkgPath),
 		}
 	}
 
@@ -266,7 +297,7 @@ func extractSpanFromStart(callExpr *ast.CallExpr, spanMap map[string]*Span, pkgP
 	}
 }
 
-func parseSpanStartOption(expr ast.Expr) (string, []Attribute) {
+func parseSpanStartOption(expr ast.Expr) (SpanKind, []Attribute) {
 	callExpr, ok := expr.(*ast.CallExpr)
 	if !ok {
 		return "", nil
@@ -290,7 +321,7 @@ func parseSpanStartOption(expr ast.Expr) (string, []Attribute) {
 	return "", nil
 }
 
-func extractSpanKind(expr ast.Expr) string {
+func extractSpanKind(expr ast.Expr) SpanKind {
 	selExpr, ok := expr.(*ast.SelectorExpr)
 	if !ok {
 		return ""
@@ -298,18 +329,16 @@ func extractSpanKind(expr ast.Expr) string {
 
 	kindName := selExpr.Sel.Name
 	switch {
-	case strings.Contains(kindName, "Server"):
-		return "SERVER"
-	case strings.Contains(kindName, "Client"):
-		return "CLIENT"
-	case strings.Contains(kindName, "Producer"):
-		return "PRODUCER"
-	case strings.Contains(kindName, "Consumer"):
-		return "CONSUMER"
-	case strings.Contains(kindName, "Internal"):
-		return "INTERNAL"
+	case strings.Contains(kindName, strings.ToTitle(string(SpanKindServer))):
+		return SpanKindServer
+	case strings.Contains(kindName, strings.ToTitle(string(SpanKindClient))):
+		return SpanKindClient
+	case strings.Contains(kindName, strings.ToTitle(string(SpanKindProducer))):
+		return SpanKindProducer
+	case strings.Contains(kindName, strings.ToTitle(string(SpanKindConsumer))):
+		return SpanKindConsumer
 	default:
-		return "INTERNAL"
+		return SpanKindInternal
 	}
 }
 
@@ -355,18 +384,70 @@ func parseAttributeExpr(expr ast.Expr) Attribute {
 	}
 }
 
-func getAttributeType(funcName string) string {
+func getAttributeType(funcName string) AttributeType {
 	switch {
 	case strings.Contains(funcName, "String"):
-		return "STRING"
+		return AttributeTypeString
 	case strings.Contains(funcName, "Int64"), strings.Contains(funcName, "Int"):
-		return "LONG"
+		return AttributeTypeLong
 	case strings.Contains(funcName, "Bool"):
-		return "BOOLEAN"
+		return AttributeTypeBoolean
 	case strings.Contains(funcName, "Float64"), strings.Contains(funcName, "Float"):
-		return "DOUBLE"
+		return AttributeTypeDouble
 	default:
-		return "STRING"
+		return AttributeTypeString
+	}
+}
+
+func extractSpanSetAttributes(callExpr *ast.CallExpr, spanMap map[SpanKind]*Span, detectedKinds map[SpanKind]bool) {
+	attributes := extractAttributes(callExpr.Args)
+	if len(attributes) == 0 {
+		return
+	}
+
+	if len(spanMap) == 0 {
+		for kind := range detectedKinds {
+			if _, exists := spanMap[kind]; !exists {
+				spanMap[kind] = &Span{
+					Kind:       kind,
+					Attributes: []Attribute{},
+				}
+			}
+		}
+		if len(spanMap) == 0 {
+			spanMap[SpanKindInternal] = &Span{
+				Kind:       SpanKindInternal,
+				Attributes: []Attribute{},
+			}
+		}
+	}
+
+	for _, span := range spanMap {
+		attrMap := make(map[string]bool)
+		for _, attr := range span.Attributes {
+			attrMap[attr.Name] = true
+		}
+
+		for _, attr := range attributes {
+			if !attrMap[attr.Name] {
+				span.Attributes = append(span.Attributes, attr)
+				attrMap[attr.Name] = true
+			}
+		}
+	}
+}
+
+func extractSpanAddEvent(callExpr *ast.CallExpr, spanMap map[SpanKind]*Span, detectedKinds map[SpanKind]bool) {
+	if len(callExpr.Args) < 2 {
+		return
+	}
+
+	for i := 1; i < len(callExpr.Args); i++ {
+		if innerCall, ok := callExpr.Args[i].(*ast.CallExpr); ok {
+			if selExpr, ok := innerCall.Fun.(*ast.SelectorExpr); ok && selExpr.Sel.Name == "WithAttributes" {
+				extractSpanSetAttributes(innerCall, spanMap, detectedKinds)
+			}
+		}
 	}
 }
 
@@ -387,19 +468,20 @@ func extractMetrics(pkg *packages.Package) []Metric {
 			}
 
 			methodName := selExpr.Sel.Name
-			isMetricCreation := strings.Contains(methodName, "Counter") ||
-				strings.Contains(methodName, "Histogram") ||
-				strings.Contains(methodName, "UpDownCounter") ||
-				strings.Contains(methodName, "Gauge")
+			metricType := mapMetricType(methodName)
 
-			if isMetricCreation && len(callExpr.Args) >= 1 {
-				if lit, ok := callExpr.Args[0].(*ast.BasicLit); ok {
-					metricName := strings.Trim(lit.Value, `"`)
-					if _, exists := metricMap[metricName]; !exists {
-						metricMap[metricName] = &Metric{
-							Name: metricName,
-							Type: mapMetricType(methodName),
-						}
+			if metricType == "" || len(callExpr.Args) == 0 {
+				return false
+			}
+
+			if lit, ok := callExpr.Args[0].(*ast.BasicLit); ok {
+				metricName := strings.Trim(lit.Value, `"`)
+				if _, exists := metricMap[metricName]; !exists {
+					unit := extractMetricUnit(callExpr)
+					metricMap[metricName] = &Metric{
+						Name: metricName,
+						Type: metricType,
+						Unit: unit,
 					}
 				}
 			}
@@ -408,9 +490,9 @@ func extractMetrics(pkg *packages.Package) []Metric {
 		})
 	}
 
-	// Add standard metrics based on package type and semantic conventions
-	standardMetrics := getStandardMetrics(pkg.PkgPath)
-	for _, metric := range standardMetrics {
+	// Add semantic convention metrics based on package type
+	semconvMetrics := getSemConvMetrics(pkg.PkgPath)
+	for _, metric := range semconvMetrics {
 		if _, exists := metricMap[metric.Name]; !exists {
 			metricMap[metric.Name] = &metric
 		}
@@ -424,88 +506,114 @@ func extractMetrics(pkg *packages.Package) []Metric {
 	return metrics
 }
 
-func mapMetricType(methodName string) string {
+func mapMetricType(methodName string) MetricType {
 	switch {
-	case strings.Contains(methodName, "Counter") && !strings.Contains(methodName, "UpDown"):
-		return "COUNTER"
-	case strings.Contains(methodName, "Histogram"):
-		return "HISTOGRAM"
-	case strings.Contains(methodName, "UpDownCounter"):
-		return "UPDOWNCOUNTER"
-	case strings.Contains(methodName, "Gauge"):
-		return "GAUGE"
+	case strings.Contains(methodName, string(MetricTypeCounter)) && !strings.Contains(methodName, "UpDown"):
+		return MetricTypeCounter
+	case strings.Contains(methodName, string(MetricTypeHistogram)):
+		return MetricTypeHistogram
+	case strings.Contains(methodName, string(MetricTypeUpDownCounter)):
+		return MetricTypeUpDownCounter
+	case strings.Contains(methodName, string(MetricTypeGauge)):
+		return MetricTypeGauge
 	default:
-		return "COUNTER"
+		return ""
 	}
 }
 
-func getStandardAttributesForSpan(spanKind string, pkgPath string) []Attribute {
+func extractMetricUnit(callExpr *ast.CallExpr) string {
+	if len(callExpr.Args) < 2 {
+		return ""
+	}
+
+	for i := 1; i < len(callExpr.Args); i++ {
+		optCall, ok := callExpr.Args[i].(*ast.CallExpr)
+		if !ok {
+			continue
+		}
+
+		selExpr, ok := optCall.Fun.(*ast.SelectorExpr)
+		if !ok {
+			continue
+		}
+
+		if selExpr.Sel.Name == "WithUnit" && len(optCall.Args) > 0 {
+			if lit, ok := optCall.Args[0].(*ast.BasicLit); ok {
+				return strings.Trim(lit.Value, `"`)
+			}
+		}
+	}
+
+	return ""
+}
+
+func getSemConvAttributesForSpan(spanKind SpanKind, pkgPath string) []Attribute {
 	pkgLower := strings.ToLower(pkgPath)
 
-	if spanKind == "SERVER" && isHTTPPackage(pkgLower) {
+	if spanKind == SpanKindServer && isHTTPPackage(pkgLower) {
 		return []Attribute{
-			{Name: "http.request.method", Type: "STRING"},
-			{Name: "http.response.status_code", Type: "LONG"},
-			{Name: "http.route", Type: "STRING"},
-			{Name: "server.address", Type: "STRING"},
-			{Name: "server.port", Type: "LONG"},
-			{Name: "url.scheme", Type: "STRING"},
-			{Name: "url.path", Type: "STRING"},
-			{Name: "network.protocol.name", Type: "STRING"},
-			{Name: "network.protocol.version", Type: "STRING"},
-			{Name: "user_agent.original", Type: "STRING"},
-			{Name: "client.address", Type: "STRING"},
-			{Name: "network.peer.address", Type: "STRING"},
+			{Name: "http.request.method", Type: AttributeTypeString},
+			{Name: "http.response.status_code", Type: AttributeTypeLong},
+			{Name: "http.route", Type: AttributeTypeString},
+			{Name: "server.address", Type: AttributeTypeString},
+			{Name: "server.port", Type: AttributeTypeLong},
+			{Name: "url.scheme", Type: AttributeTypeString},
+			{Name: "url.path", Type: AttributeTypeString},
+			{Name: "network.protocol.name", Type: AttributeTypeString},
+			{Name: "network.protocol.version", Type: AttributeTypeString},
+			{Name: "user_agent.original", Type: AttributeTypeString},
+			{Name: "client.address", Type: AttributeTypeString},
+			{Name: "network.peer.address", Type: AttributeTypeString},
 		}
 	}
 
-	if spanKind == "CLIENT" && isHTTPPackage(pkgLower) {
+	if spanKind == SpanKindClient && isHTTPPackage(pkgLower) {
 		return []Attribute{
-			{Name: "http.request.method", Type: "STRING"},
-			{Name: "http.response.status_code", Type: "LONG"},
-			{Name: "server.address", Type: "STRING"},
-			{Name: "server.port", Type: "LONG"},
-			{Name: "url.full", Type: "STRING"},
-			{Name: "network.protocol.name", Type: "STRING"},
-			{Name: "network.protocol.version", Type: "STRING"},
+			{Name: "http.request.method", Type: AttributeTypeString},
+			{Name: "http.response.status_code", Type: AttributeTypeLong},
+			{Name: "server.address", Type: AttributeTypeString},
+			{Name: "server.port", Type: AttributeTypeLong},
+			{Name: "url.full", Type: AttributeTypeString},
+			{Name: "network.protocol.name", Type: AttributeTypeString},
+			{Name: "network.protocol.version", Type: AttributeTypeString},
 		}
 	}
 
-	if spanKind == "CLIENT" && isDatabasePackage(pkgLower) {
+	if spanKind == SpanKindClient && isDatabasePackage(pkgLower) {
 		return []Attribute{
-			{Name: "db.system", Type: "STRING"},
-			{Name: "db.operation.name", Type: "STRING"},
-			{Name: "db.collection.name", Type: "STRING"},
-			{Name: "db.query.text", Type: "STRING"},
-			{Name: "server.address", Type: "STRING"},
-			{Name: "server.port", Type: "LONG"},
+			{Name: "db.system", Type: AttributeTypeString},
+			{Name: "db.operation.name", Type: AttributeTypeString},
+			{Name: "db.collection.name", Type: AttributeTypeString},
+			{Name: "db.query.text", Type: AttributeTypeString},
+			{Name: "server.address", Type: AttributeTypeString},
+			{Name: "server.port", Type: AttributeTypeLong},
 		}
 	}
 
-	if (spanKind == "SERVER" || spanKind == "CLIENT") && isRPCPackage(pkgLower) {
+	if (spanKind == SpanKindServer || spanKind == SpanKindClient) && isRPCPackage(pkgLower) {
 		return []Attribute{
-			{Name: "rpc.system", Type: "STRING"},
-			{Name: "rpc.service", Type: "STRING"},
-			{Name: "rpc.method", Type: "STRING"},
-			{Name: "server.address", Type: "STRING"},
-			{Name: "server.port", Type: "LONG"},
+			{Name: "rpc.system", Type: AttributeTypeString},
+			{Name: "rpc.service", Type: AttributeTypeString},
+			{Name: "rpc.method", Type: AttributeTypeString},
+			{Name: "server.address", Type: AttributeTypeString},
+			{Name: "server.port", Type: AttributeTypeLong},
 		}
 	}
 
-	if spanKind == "SERVER" && isLambdaPackage(pkgLower) {
+	if spanKind == SpanKindServer && isLambdaPackage(pkgLower) {
 		return []Attribute{
-			{Name: "faas.invocation_id", Type: "STRING"},
-			{Name: "cloud.resource_id", Type: "STRING"},
+			{Name: "faas.invocation_id", Type: AttributeTypeString},
+			{Name: "cloud.resource_id", Type: AttributeTypeString},
 		}
 	}
 
-	if spanKind == "CLIENT" && isAWSPackage(pkgLower) {
+	if spanKind == SpanKindClient && isAWSPackage(pkgLower) {
 		return []Attribute{
-			{Name: "rpc.system", Type: "STRING"},
-			{Name: "rpc.service", Type: "STRING"},
-			{Name: "rpc.method", Type: "STRING"},
-			{Name: "server.address", Type: "STRING"},
-			{Name: "server.port", Type: "LONG"},
+			{Name: "rpc.system", Type: AttributeTypeString},
+			{Name: "rpc.service", Type: AttributeTypeString},
+			{Name: "rpc.method", Type: AttributeTypeString},
+			{Name: "server.address", Type: AttributeTypeString},
+			{Name: "server.port", Type: AttributeTypeLong},
 		}
 	}
 
@@ -538,45 +646,53 @@ func isLambdaPackage(pkgPath string) bool {
 	return strings.Contains(pkgPath, "lambda")
 }
 
-func getStandardMetrics(pkgPath string) []Metric {
+func isRuntimePackage(pkgPath string) bool {
+	return strings.HasSuffix(pkgPath, "/instrumentation/runtime")
+}
+
+func isHostPackage(pkgPath string) bool {
+	return strings.HasSuffix(pkgPath, "/instrumentation/host")
+}
+
+func getSemConvMetrics(pkgPath string) []Metric {
 	pkgLower := strings.ToLower(pkgPath)
 
 	if isHTTPPackage(pkgLower) {
 		return []Metric{
 			{
 				Name: "http.server.request.duration",
-				Type: "HISTOGRAM",
+				Type: MetricTypeHistogram,
 				Unit: "s",
 				Attributes: []Attribute{
-					{Name: "http.request.method", Type: "STRING"},
-					{Name: "http.response.status_code", Type: "LONG"},
-					{Name: "http.route", Type: "STRING"},
-					{Name: "network.protocol.version", Type: "STRING"},
-					{Name: "url.scheme", Type: "STRING"},
+					{Name: "http.request.method", Type: AttributeTypeString},
+					{Name: "http.response.status_code", Type: AttributeTypeLong},
+					{Name: "http.route", Type: AttributeTypeString},
+					{Name: "network.protocol.version", Type: AttributeTypeString},
+					{Name: "url.scheme", Type: AttributeTypeString},
 				},
 			},
 			{
 				Name: "http.server.request.body.size",
-				Type: "HISTOGRAM",
+				Type: MetricTypeHistogram,
 				Unit: "By",
 				Attributes: []Attribute{
-					{Name: "http.request.method", Type: "STRING"},
-					{Name: "http.response.status_code", Type: "LONG"},
-					{Name: "http.route", Type: "STRING"},
-					{Name: "network.protocol.version", Type: "STRING"},
-					{Name: "url.scheme", Type: "STRING"},
+					{Name: "http.request.method", Type: AttributeTypeString},
+					{Name: "http.response.status_code", Type: AttributeTypeLong},
+					{Name: "http.route", Type: AttributeTypeString},
+					{Name: "network.protocol.version", Type: AttributeTypeString},
+					{Name: "url.scheme", Type: AttributeTypeString},
 				},
 			},
 			{
 				Name: "http.server.response.body.size",
-				Type: "HISTOGRAM",
+				Type: MetricTypeHistogram,
 				Unit: "By",
 				Attributes: []Attribute{
-					{Name: "http.request.method", Type: "STRING"},
-					{Name: "http.response.status_code", Type: "LONG"},
-					{Name: "http.route", Type: "STRING"},
-					{Name: "network.protocol.version", Type: "STRING"},
-					{Name: "url.scheme", Type: "STRING"},
+					{Name: "http.request.method", Type: AttributeTypeString},
+					{Name: "http.response.status_code", Type: AttributeTypeLong},
+					{Name: "http.route", Type: AttributeTypeString},
+					{Name: "network.protocol.version", Type: AttributeTypeString},
+					{Name: "url.scheme", Type: AttributeTypeString},
 				},
 			},
 		}
@@ -586,32 +702,122 @@ func getStandardMetrics(pkgPath string) []Metric {
 		return []Metric{
 			{
 				Name: "rpc.server.duration",
-				Type: "HISTOGRAM",
+				Type: MetricTypeHistogram,
 				Unit: "ms",
 				Attributes: []Attribute{
-					{Name: "rpc.method", Type: "STRING"},
-					{Name: "rpc.service", Type: "STRING"},
-					{Name: "rpc.system", Type: "STRING"},
+					{Name: "rpc.method", Type: AttributeTypeString},
+					{Name: "rpc.service", Type: AttributeTypeString},
+					{Name: "rpc.system", Type: AttributeTypeString},
 				},
 			},
 			{
 				Name: "rpc.server.request.size",
-				Type: "HISTOGRAM",
+				Type: MetricTypeHistogram,
 				Unit: "By",
 				Attributes: []Attribute{
-					{Name: "rpc.method", Type: "STRING"},
-					{Name: "rpc.service", Type: "STRING"},
-					{Name: "rpc.system", Type: "STRING"},
+					{Name: "rpc.method", Type: AttributeTypeString},
+					{Name: "rpc.service", Type: AttributeTypeString},
+					{Name: "rpc.system", Type: AttributeTypeString},
 				},
 			},
 			{
 				Name: "rpc.server.response.size",
-				Type: "HISTOGRAM",
+				Type: MetricTypeHistogram,
 				Unit: "By",
 				Attributes: []Attribute{
-					{Name: "rpc.method", Type: "STRING"},
-					{Name: "rpc.service", Type: "STRING"},
-					{Name: "rpc.system", Type: "STRING"},
+					{Name: "rpc.method", Type: AttributeTypeString},
+					{Name: "rpc.service", Type: AttributeTypeString},
+					{Name: "rpc.system", Type: AttributeTypeString},
+				},
+			},
+		}
+	}
+
+	if isRuntimePackage(pkgPath) {
+		return []Metric{
+			{
+				Name: "go.memory.used",
+				Type: MetricTypeGauge,
+				Unit: "By",
+			},
+			{
+				Name: "go.memory.limit",
+				Type: MetricTypeGauge,
+				Unit: "By",
+			},
+			{
+				Name: "go.memory.allocated",
+				Type: MetricTypeCounter,
+				Unit: "By",
+			},
+			{
+				Name: "go.memory.allocations",
+				Type: MetricTypeCounter,
+				Unit: "{allocation}",
+			},
+			{
+				Name: "go.memory.gc.goal",
+				Type: MetricTypeGauge,
+				Unit: "By",
+			},
+			{
+				Name: "go.goroutine.count",
+				Type: MetricTypeGauge,
+				Unit: "{goroutine}",
+			},
+			{
+				Name: "go.processor.limit",
+				Type: MetricTypeGauge,
+				Unit: "{thread}",
+			},
+			{
+				Name: "go.config.gogc",
+				Type: MetricTypeGauge,
+				Unit: "%",
+			},
+		}
+	}
+
+	if isHostPackage(pkgPath) {
+		return []Metric{
+			{
+				Name: "process.cpu.time",
+				Type: MetricTypeCounter,
+				Unit: "s",
+				Attributes: []Attribute{
+					{Name: "state", Type: AttributeTypeString},
+				},
+			},
+			{
+				Name: "system.cpu.time",
+				Type: MetricTypeCounter,
+				Unit: "s",
+				Attributes: []Attribute{
+					{Name: "state", Type: AttributeTypeString},
+				},
+			},
+			{
+				Name: "system.memory.usage",
+				Type: MetricTypeGauge,
+				Unit: "By",
+				Attributes: []Attribute{
+					{Name: "state", Type: AttributeTypeString},
+				},
+			},
+			{
+				Name: "system.memory.utilization",
+				Type: MetricTypeGauge,
+				Unit: "1",
+				Attributes: []Attribute{
+					{Name: "state", Type: AttributeTypeString},
+				},
+			},
+			{
+				Name: "system.network.io",
+				Type: MetricTypeCounter,
+				Unit: "By",
+				Attributes: []Attribute{
+					{Name: "direction", Type: AttributeTypeString},
 				},
 			},
 		}
