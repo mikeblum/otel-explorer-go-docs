@@ -9,59 +9,80 @@ import (
 type SpanKind string
 
 const (
-	SpanKindServer   SpanKind = "SERVER"
-	SpanKindClient   SpanKind = "CLIENT"
-	SpanKindProducer SpanKind = "PRODUCER"
-	SpanKindConsumer SpanKind = "CONSUMER"
-	SpanKindInternal SpanKind = "INTERNAL"
+	SpanKindServer   SpanKind = "server"
+	SpanKindClient   SpanKind = "client"
+	SpanKindProducer SpanKind = "producer"
+	SpanKindConsumer SpanKind = "consumer"
+	SpanKindInternal SpanKind = "internal"
 )
 
 type MetricType string
 
 const (
-	MetricTypeCounter       MetricType = "COUNTER"
-	MetricTypeHistogram     MetricType = "HISTOGRAM"
-	MetricTypeUpDownCounter MetricType = "UPDOWNCOUNTER"
-	MetricTypeGauge         MetricType = "GAUGE"
+	MetricTypeCounter       MetricType = "counter"
+	MetricTypeHistogram     MetricType = "histogram"
+	MetricTypeUpDownCounter MetricType = "updowncounter"
+	MetricTypeGauge         MetricType = "gauge"
 )
 
 type AttributeType string
 
 const (
-	AttributeTypeString  AttributeType = "STRING"
-	AttributeTypeLong    AttributeType = "LONG"
-	AttributeTypeBoolean AttributeType = "BOOLEAN"
-	AttributeTypeDouble  AttributeType = "DOUBLE"
+	AttributeTypeString  AttributeType = "string"
+	AttributeTypeLong    AttributeType = "int"
+	AttributeTypeBoolean AttributeType = "boolean"
+	AttributeTypeDouble  AttributeType = "double"
 )
 
-type Library struct {
-	Repository          string          `yaml:"repository"`
-	Name                string          `yaml:"name"`
-	DisplayName         string          `yaml:"display_name,omitempty"`
-	Description         string          `yaml:"description,omitempty"`
-	SemanticConventions []string        `yaml:"semantic_conventions,omitempty"`
-	LibraryLink         string          `yaml:"library_link,omitempty"`
-	SourcePath          string          `yaml:"source_path"`
-	MinimumGoVersion    string          `yaml:"minimum_go_version,omitempty"`
-	Scope               Scope           `yaml:"scope"`
-	TargetVersions      *TargetVersions `yaml:"target_versions,omitempty"`
-	Configurations      []Configuration `yaml:"configurations,omitempty"`
-	Telemetry           []Telemetry     `yaml:"telemetry,omitempty"`
+type Stability string
+
+const (
+	StabilityDevelopment  Stability = "development"
+	StabilityExperimental Stability = "experimental"
+	StabilityStable       Stability = "stable"
+)
+
+type Group struct {
+	ID         string            `yaml:"id"`
+	Type       string            `yaml:"type"`
+	Name       string            `yaml:"display_name,omitempty"`
+	Stability  Stability         `yaml:"stability"`
+	Brief      string            `yaml:"brief"`
+	SpanKind   SpanKind          `yaml:"span_kind,omitempty"`
+	MetricName string            `yaml:"metric_name,omitempty"`
+	Instrument MetricType        `yaml:"instrument,omitempty"`
+	Unit       string            `yaml:"unit,omitempty"`
+	Attributes []AttributeRef    `yaml:"attributes,omitempty"`
 }
 
-type Scope struct {
-	Name string `yaml:"name"`
+type AttributeRef struct {
+	Ref              string `yaml:"ref"`
+	RequirementLevel string `yaml:"requirement_level,omitempty"`
 }
 
-type TargetVersions struct {
-	Library string `yaml:"library,omitempty"`
+type AttributeGroup struct {
+	ID         string           `yaml:"id"`
+	Type       string           `yaml:"type"`
+	Name       string           `yaml:"display_name"`
+	Brief      string           `yaml:"brief"`
+	Attributes []AttributeDef   `yaml:"attributes"`
 }
 
-type Configuration struct {
-	Name        string `yaml:"name"`
-	Description string `yaml:"description"`
-	Type        string `yaml:"type"`
-	Default     string `yaml:"default,omitempty"`
+type AttributeDef struct {
+	ID        string        `yaml:"id"`
+	Type      AttributeType `yaml:"type"`
+	Brief     string        `yaml:"brief"`
+	Stability Stability     `yaml:"stability,omitempty"`
+	Examples  []interface{} `yaml:"examples,omitempty"`
+}
+
+type Attribute struct {
+	ID        string        `yaml:"id,omitempty"`
+	Ref       string        `yaml:"ref,omitempty"`
+	Name      string        `yaml:"name,omitempty"`
+	Type      AttributeType `yaml:"type,omitempty"`
+	Stability Stability     `yaml:"stability,omitempty"`
+	Examples  []string      `yaml:"examples,omitempty"`
 }
 
 type Telemetry struct {
@@ -80,11 +101,6 @@ type Metric struct {
 	Type       MetricType  `yaml:"type"`
 	Unit       string      `yaml:"unit,omitempty"`
 	Attributes []Attribute `yaml:"attributes,omitempty"`
-}
-
-type Attribute struct {
-	Name string        `yaml:"name"`
-	Type AttributeType `yaml:"type"`
 }
 
 func (a Attribute) MarshalYAML() (interface{}, error) {
@@ -123,42 +139,35 @@ func (s Stats) LogValue() slog.Value {
 	)
 }
 
-func CalculateStats(librariesByRepo map[string][]Library) map[string]Stats {
+func CalculateStats(groupsByRepo map[string][]Group) map[string]Stats {
 	repoStats := make(map[string]Stats)
 
-	for repoName, libraries := range librariesByRepo {
+	for repoName, groups := range groupsByRepo {
 		stats := Stats{
 			SpansByKind:   make(map[SpanKind]int),
 			MetricsByType: make(map[MetricType]int),
 		}
 
-		for _, lib := range libraries {
-			if len(lib.Telemetry) > 0 {
-				stats.LibrariesWithTelemetry++
+		groupCount := make(map[string]bool)
+
+		for _, group := range groups {
+			groupCount[group.ID] = true
+
+			if group.Type == "span" {
+				stats.TotalSpans++
+				if group.SpanKind != "" {
+					stats.SpansByKind[group.SpanKind]++
+				}
+				stats.TotalAttributes += len(group.Attributes)
 			}
 
-			if len(lib.SemanticConventions) > 0 {
-				stats.LibrariesWithSemanticConventions++
-			}
-
-			for _, tel := range lib.Telemetry {
-				for _, span := range tel.Spans {
-					stats.TotalSpans++
-					if span.Kind != "" {
-						stats.SpansByKind[span.Kind]++
-					}
-					stats.TotalAttributes += len(span.Attributes)
-				}
-
-				for _, metric := range tel.Metrics {
-					stats.TotalMetrics++
-					if metric.Type != "" {
-						stats.MetricsByType[metric.Type]++
-					}
-					stats.TotalAttributes += len(metric.Attributes)
-				}
+			if group.Type == "metric" {
+				stats.TotalMetrics++
+				stats.TotalAttributes += len(group.Attributes)
 			}
 		}
+
+		stats.LibrariesWithTelemetry = len(groupCount)
 
 		repoStats[repoName] = stats
 	}

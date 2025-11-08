@@ -19,12 +19,14 @@ clean: ## 🧹 Cleanup build artifacts
 	go clean && rm -rf .repo $(BINARY_NAME_BASE) coverage.* insturmentation-list.yaml
 
 .PHONY: dev
-dev: ## 🚀 Start development server
+dev: ## 🚀 Generate registry and validate with weaver
 	go run ./cmd/scanner
+	$(MAKE) weaver-check
 
 .PHONY: lint
 lint: ## 🧹 Run linter checks
 	golangci-lint run
+	$(MAKE) weaver-check
 
 .PHONY: fmt
 fmt: ## ✨ Format code
@@ -59,6 +61,44 @@ vuln: ## 🛡️  Scan for vulnerabilities
 
 .PHONY: pre-commit
 pre-commit: fmt tidy lint test ## ✅ Run all checks
+
+.PHONY: install
+install: ## 📦 Install dependencies (weaver CLI)
+	@which weaver > /dev/null || ( \
+		echo "Installing weaver..." && \
+		curl -sSL https://github.com/open-telemetry/weaver/releases/latest/download/weaver-$(shell uname -s | tr A-Z a-z)-$(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz | tar xz -C /tmp && \
+		sudo mv /tmp/weaver /usr/local/bin/weaver && \
+		echo "Weaver installed successfully" \
+	)
+
+.PHONY: weaver-check
+weaver-check: ## ✅ Validate registry with weaver
+	@if ! command -v weaver &> /dev/null && [ ! -f ~/.cargo/bin/weaver ]; then \
+		echo "⚠️  Weaver not found. Run 'make install' first"; \
+		exit 0; \
+	fi
+	@echo "🔍 Validating registry with weaver..."
+	@if command -v weaver &> /dev/null; then \
+		weaver registry check -r registry; \
+	else \
+		~/.cargo/bin/weaver registry check -r registry; \
+	fi
+
+.PHONY: weaver-resolve
+weaver-resolve: ## 🔗 Resolve registry with weaver
+	@if ! command -v weaver &> /dev/null; then \
+		echo "⚠️  Weaver not found. Run 'make install' first"; \
+		exit 1; \
+	fi
+	weaver registry resolve -r registry
+
+.PHONY: weaver-stats
+weaver-stats: ## 📊 Show registry statistics with weaver
+	@if ! command -v weaver &> /dev/null; then \
+		echo "⚠️  Weaver not found. Run 'make install' first"; \
+		exit 1; \
+	fi
+	weaver registry stats -r registry
 
 # pass through CLI flags to ./cmd/
 %:

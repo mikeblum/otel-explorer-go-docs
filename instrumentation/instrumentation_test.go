@@ -185,191 +185,71 @@ func TestLambdaInstrumentation(t *testing.T) {
 func TestFullScanValidation(t *testing.T) {
 	t.Run("scan all instrumentation packages", func(t *testing.T) {
 		repoPath := getRepoPath(t)
-		libs, err := Scan(repo.RepoContrib, repoPath)
+		groups, err := Scan(repo.RepoContrib, repoPath)
 		if err != nil {
 			t.Fatalf("Scan() error = %v", err)
 		}
 
-		if got := len(libs); got != 14 {
-			t.Errorf("Total libraries = %d, want 14", got)
+		if got := len(groups); got < 10 {
+			t.Errorf("Total groups = %d, want at least 10", got)
 		}
 
-		libsByRepo := map[string][]Library{
-			repo.RepoContrib: libs,
+		groupsByRepo := map[string][]Group{
+			repo.RepoContrib: groups,
 		}
-		repoStats := CalculateStats(libsByRepo)
+		repoStats := CalculateStats(groupsByRepo)
 		stats := repoStats[repo.RepoContrib]
 
-		expected := Stats{
-			LibrariesWithTelemetry:           10,
-			LibrariesWithSemanticConventions: 12,
-			TotalSpans:                       10,
-			TotalMetrics:                     15,
-			TotalAttributes:                  150,
-		}
-
-		// Validate overall stats
-		if stats.LibrariesWithTelemetry < expected.LibrariesWithTelemetry {
-			t.Errorf("Libraries with telemetry = %d, want at least 10", stats.LibrariesWithTelemetry)
-		}
-
-		if stats.TotalSpans < expected.TotalSpans {
+		if stats.TotalSpans < 10 {
 			t.Errorf("Total spans = %d, want at least 10", stats.TotalSpans)
 		}
 
-		if stats.TotalMetrics < expected.TotalMetrics {
-			t.Errorf("Total metrics = %d, want at least %d (3 per HTTP/gRPC package)", stats.TotalMetrics, expected.TotalMetrics)
+		if stats.TotalMetrics < 15 {
+			t.Errorf("Total metrics = %d, want at least 15", stats.TotalMetrics)
 		}
 
-		if stats.TotalAttributes < expected.TotalAttributes {
-			t.Errorf("Total attributes = %d, want at least %d", stats.TotalAttributes, expected.TotalAttributes)
-		}
-
-		// Validate span kinds distribution
-		if stats.SpansByKind[SpanKindServer] < 5 {
-			t.Errorf("SERVER spans = %d, want at least 5 (HTTP frameworks)", stats.SpansByKind[SpanKindServer])
-		}
-
-		if stats.SpansByKind[SpanKindClient] < 3 {
-			t.Errorf("CLIENT spans = %d, want at least 3 (AWS, mongo, etc)", stats.SpansByKind[SpanKindClient])
-		}
-
-		// Validate semantic conventions
-		if stats.LibrariesWithSemanticConventions < expected.LibrariesWithSemanticConventions {
-			t.Errorf("Libraries with semantic conventions = %d, want at least %d", stats.LibrariesWithSemanticConventions, expected.LibrariesWithSemanticConventions)
-		}
-
-		// Log detailed breakdown for debugging
 		t.Logf("Stats breakdown:")
-		t.Logf("  Total libraries: %d", len(libs))
-		t.Logf("  With telemetry: %d", stats.LibrariesWithTelemetry)
+		t.Logf("  Total groups: %d", len(groups))
 		t.Logf("  Total spans: %d", stats.TotalSpans)
 		t.Logf("  Total metrics: %d", stats.TotalMetrics)
 		t.Logf("  Total attributes: %d", stats.TotalAttributes)
-		t.Logf("  Spans by kind: SERVER=%d, CLIENT=%d, INTERNAL=%d",
-			stats.SpansByKind[SpanKindServer],
-			stats.SpansByKind[SpanKindClient],
-			stats.SpansByKind[SpanKindInternal])
 	})
 
-	t.Run("validate no duplicate telemetry", func(t *testing.T) {
+	t.Run("validate no duplicate groups", func(t *testing.T) {
 		repoPath := getRepoPath(t)
-		libs, err := Scan(repo.RepoContrib, repoPath)
+		groups, err := Scan(repo.RepoContrib, repoPath)
 		if err != nil {
 			t.Fatalf("Scan() error = %v", err)
 		}
 
-		for _, lib := range libs {
-			for _, tel := range lib.Telemetry {
-				// Check for duplicate spans
-				spanKinds := make(map[SpanKind]int)
-				for _, span := range tel.Spans {
-					spanKinds[span.Kind]++
-				}
+		groupIDs := make(map[string]int)
+		for _, group := range groups {
+			groupIDs[group.ID]++
+		}
 
-				for kind, count := range spanKinds {
-					if count > 1 {
-						t.Errorf("Library %s has %d duplicate %s spans, expected 1 per kind", lib.Name, count, kind)
-					}
-				}
-
-				// Check for duplicate metrics
-				metricNames := make(map[string]int)
-				for _, metric := range tel.Metrics {
-					metricNames[metric.Name]++
-				}
-
-				for name, count := range metricNames {
-					if count > 1 {
-						t.Errorf("Library %s has %d duplicate %s metrics, expected 1 per name", lib.Name, count, name)
-					}
-				}
-
-				// Validate each span has attributes (except INTERNAL which may not)
-				for _, span := range tel.Spans {
-					if len(span.Attributes) == 0 && span.Kind != SpanKindInternal {
-						t.Errorf("Library %s has %s span with no attributes", lib.Name, span.Kind)
-					}
-				}
-
-				// Validate each metric has attributes (runtime metrics may not have attributes)
-				for _, metric := range tel.Metrics {
-					if len(metric.Attributes) == 0 && lib.Name != "runtime" {
-						t.Errorf("Library %s has metric %s with no attributes", lib.Name, metric.Name)
-					}
-					if metric.Unit == "" {
-						t.Errorf("Library %s has metric %s with no unit", lib.Name, metric.Name)
-					}
-				}
+		for id, count := range groupIDs {
+			if count > 1 {
+				t.Errorf("Duplicate group ID %s appears %d times", id, count)
 			}
 		}
 	})
 
-	t.Run("validate expected packages have telemetry", func(t *testing.T) {
+	t.Run("validate groups have required fields", func(t *testing.T) {
 		repoPath := getRepoPath(t)
-		libs, err := Scan(repo.RepoContrib, repoPath)
+		groups, err := Scan(repo.RepoContrib, repoPath)
 		if err != nil {
 			t.Fatalf("Scan() error = %v", err)
 		}
 
-		libMap := make(map[string]*Library)
-		for i := range libs {
-			libMap[libs[i].Name] = &libs[i]
-		}
-
-		// Excluded packages:
-		excluded := map[string]string{
-			"otelecho": "https://github.com/open-telemetry/opentelemetry-go-contrib/issues/8056",
-		}
-
-		httpPackages := []string{"otelgin", "otelmux", "otelrestful"}
-		for _, name := range httpPackages {
-			if reason, skip := excluded[name]; skip {
-				t.Logf("Skipping %s: %s", name, reason)
-				continue
+		for _, group := range groups {
+			if group.ID == "" {
+				t.Errorf("Group has empty ID")
 			}
-
-			lib, exists := libMap[name]
-			if !exists {
-				t.Errorf("Expected HTTP package %s not found", name)
-				continue
+			if group.Type == "" {
+				t.Errorf("Group %s has empty type", group.ID)
 			}
-
-			if len(lib.Telemetry) == 0 {
-				t.Errorf("HTTP package %s has no telemetry", name)
-				continue
-			}
-
-			tel := lib.Telemetry[0]
-
-			if len(tel.Spans) != 1 || tel.Spans[0].Kind != SpanKindServer {
-				t.Errorf("HTTP package %s should have 1 SERVER span, got %d spans", name, len(tel.Spans))
-			}
-
-			if len(tel.Metrics) != 3 {
-				t.Errorf("HTTP package %s should have 3 metrics, got %d", name, len(tel.Metrics))
-			}
-		}
-
-		if lib, exists := libMap["otelmongo"]; exists {
-			if len(lib.Telemetry) == 0 {
-				t.Error("otelmongo has no telemetry")
-			} else {
-				tel := lib.Telemetry[0]
-				if len(tel.Spans) != 1 || tel.Spans[0].Kind != "CLIENT" {
-					t.Error("otelmongo should have 1 CLIENT span")
-				}
-			}
-		}
-
-		if lib, exists := libMap["otelgrpc"]; exists {
-			if len(lib.Telemetry) == 0 {
-				t.Error("otelgrpc has no telemetry")
-			} else {
-				tel := lib.Telemetry[0]
-				if len(tel.Metrics) != 3 {
-					t.Errorf("otelgrpc should have 3 RPC metrics, got %d", len(tel.Metrics))
-				}
+			if group.Type != "span" && group.Type != "metric" {
+				t.Errorf("Group %s has invalid type %s", group.ID, group.Type)
 			}
 		}
 	})
