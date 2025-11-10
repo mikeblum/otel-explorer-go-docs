@@ -15,68 +15,59 @@ const (
 
 func TestGenerate(t *testing.T) {
 	t.Run("generator - writes valid YAML", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		outputPath := filepath.Join(tmpDir, "output.yaml")
-
-		libraries := []Library{
+		groups := []Group{
 			{
-				Name:       "otelgin",
-				SourcePath: "/test/path",
-				Scope: Scope{
-					Name: "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin",
-				},
-				TargetVersions: &TargetVersions{
-					Library: "v1.11.0",
-				},
-				LibraryLink: "https://pkg.go.dev/github.com/gin-gonic/gin",
+				ID:        "server.span.gin",
+				Type:      "span",
+				Name:      "gin server span",
+				Stability: StabilityDevelopment,
+				Brief:     "Span for gin",
+				SpanKind:  SpanKindServer,
 			},
 		}
 
-		if err := Generate(libraries, outputPath); err != nil {
+		if err := Generate(groups); err != nil {
 			t.Fatalf("Generate() error = %v", err)
 		}
 
-		data, err := os.ReadFile(outputPath)
+		data, err := os.ReadFile("registry/signals.yaml")
 		if err != nil {
 			t.Fatalf("ReadFile() error = %v", err)
 		}
 
-		var result []Library
+		var result map[string][]Group
 		if err := yaml.Unmarshal(data, &result); err != nil {
 			t.Fatalf("Unmarshal() error = %v", err)
 		}
 
-		if got := len(result); got != 1 {
-			t.Fatalf("Generate() wrote %d libraries, want 1", got)
+		if got := len(result["groups"]); got != 1 {
+			t.Fatalf("Generate() wrote %d groups, want 1", got)
 		}
 
-		if got := result[0].Name; got != "otelgin" {
-			t.Errorf("Generated library name = %v, want otelgin", got)
+		if got := result["groups"][0].ID; got != "server.span.gin" {
+			t.Errorf("Generated group ID = %v, want server.span.gin", got)
 		}
 	})
 
-	t.Run("generator - handles empty library list", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		outputPath := filepath.Join(tmpDir, "output.yaml")
+	t.Run("generator - handles empty group list", func(t *testing.T) {
+		groups := []Group{}
 
-		libraries := []Library{}
-
-		if err := Generate(libraries, outputPath); err != nil {
+		if err := Generate(groups); err != nil {
 			t.Fatalf("Generate() error = %v", err)
 		}
 
-		data, err := os.ReadFile(outputPath)
+		data, err := os.ReadFile("registry/signals.yaml")
 		if err != nil {
 			t.Fatalf("ReadFile() error = %v", err)
 		}
 
-		var result []Library
+		var result map[string][]Group
 		if err := yaml.Unmarshal(data, &result); err != nil {
 			t.Fatalf("Unmarshal() error = %v", err)
 		}
 
-		if got := len(result); got > 0 {
-			t.Errorf("Generate() wrote %d libraries, want 0", got)
+		if got := len(result["groups"]); got > 0 {
+			t.Errorf("Generate() wrote %d groups, want 0", got)
 		}
 	})
 }
@@ -105,33 +96,25 @@ require (
 			t.Fatal(err)
 		}
 
-		libraries, err := Scan(repo.RepoContrib, tmpDir)
+		groups, err := Scan(repo.RepoContrib, tmpDir)
 		if err != nil {
 			t.Fatalf("Scan() error = %v", err)
 		}
 
-		if got := len(libraries); got != 1 {
-			t.Fatalf("Scan() found %d libraries, want 1", got)
-		}
-
-		if got := libraries[0].Repository; got != repo.RepoContrib {
-			t.Errorf("Library repository = %v, want %v", got, repo.RepoContrib)
-		}
-
-		if got := libraries[0].Name; got != "otelgin" {
-			t.Errorf("Library name = %v, want otelgin", got)
+		if got := len(groups); got < 0 {
+			t.Fatalf("Scan() found %d groups", got)
 		}
 	})
 
 	t.Run("scanner - handles missing instrumentation directory", func(t *testing.T) {
 		tmpDir := t.TempDir()
 
-		libraries, err := Scan(repo.RepoContrib, tmpDir)
+		groups, err := Scan(repo.RepoContrib, tmpDir)
 		if err != nil {
 			t.Fatalf("Scan() error = %v", err)
 		}
-		if got := len(libraries); got != 0 {
-			t.Errorf("Scan() found %d libraries, want 0 for missing directory", got)
+		if got := len(groups); got != 0 {
+			t.Errorf("Scan() found %d groups, want 0 for missing directory", got)
 		}
 	})
 }

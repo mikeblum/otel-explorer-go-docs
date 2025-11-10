@@ -1,0 +1,12 @@
+groups:
+  - id: registry.otel.go
+    type: attribute_group
+    display_name: OpenTelemetry Go Instrumentation Attributes
+    brief: Custom attributes used in OpenTelemetry Go instrumentation
+    attributes:
+      - id: echo.error
+        type: string
+        brief: Echo Error
+        stability: development
+        examples:
+          - echo.error

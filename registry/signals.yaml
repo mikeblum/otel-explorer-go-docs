@@ -1,0 +1,10 @@
+groups:
+  - id: echo.internal.span
+    type: span
+    display_name: echo internal span
+    stability: development
+    brief: Span for echo
+    span_kind: internal
+    attributes:
+      - ref: echo.error
+        requirement_level: recommended
