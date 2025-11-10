@@ -181,7 +181,7 @@ func Scan(repoName, repoPath string) ([]Group, error) {
 		scanPaths = []string{filepath.Join(repoPath, "instrumentation")}
 	}
 
-	var groups []Group
+	groupMap := make(map[string]*Group)
 	for _, scanPath := range scanPaths {
 		packages, err := Walk(scanPath)
 		if err != nil {
@@ -193,8 +193,28 @@ func Scan(repoName, repoPath string) ([]Group, error) {
 			if err != nil {
 				continue
 			}
-			groups = append(groups, pkgGroups...)
+			for _, group := range pkgGroups {
+				if existing, ok := groupMap[group.ID]; ok {
+					attrMap := make(map[string]bool)
+					for _, attr := range existing.Attributes {
+						attrMap[attr.Ref] = true
+					}
+					for _, attr := range group.Attributes {
+						if !attrMap[attr.Ref] {
+							existing.Attributes = append(existing.Attributes, attr)
+						}
+					}
+				} else {
+					groupCopy := group
+					groupMap[group.ID] = &groupCopy
+				}
+			}
 		}
+	}
+
+	var groups []Group
+	for _, group := range groupMap {
+		groups = append(groups, *group)
 	}
 
 	return groups, nil

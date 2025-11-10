@@ -8,13 +8,21 @@ import (
 	"github.com/mikeblum/otel-explorer-go-docs/repo"
 )
 
+func TestMain(m *testing.M) {
+	if _, err := repo.Checkout(); err != nil {
+		panic("Failed to checkout repos: " + err.Error())
+	}
+
+	os.Exit(m.Run())
+}
+
 func getRepoPath(t *testing.T) string {
 	t.Helper()
 	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return filepath.Join(filepath.Dir(wd), ".repo/opentelemetry-go-contrib")
+	return filepath.Join(wd, ".repo/opentelemetry-go-contrib")
 }
 
 func assertSpanHasAttribute(t *testing.T, attributes []Attribute, name string) {
@@ -46,7 +54,7 @@ func TestAWSSDKInstrumentation(t *testing.T) {
 
 	var hasClientSpan bool
 	for _, span := range tel.Spans {
-		if span.Kind == "CLIENT" {
+		if span.Kind == SpanKindClient {
 			hasClientSpan = true
 			assertSpanHasAttribute(t, span.Attributes, "rpc.system")
 			assertSpanHasAttribute(t, span.Attributes, "rpc.service")
@@ -55,7 +63,7 @@ func TestAWSSDKInstrumentation(t *testing.T) {
 		}
 	}
 	if !hasClientSpan {
-		t.Error("No CLIENT span found")
+		t.Errorf("No CLIENT span found, got spans: %+v", tel.Spans)
 	}
 }
 
@@ -126,7 +134,7 @@ func TestMongoInstrumentation(t *testing.T) {
 	}
 
 	span := tel.Spans[0]
-	if span.Kind != "CLIENT" {
+	if span.Kind != SpanKindClient {
 		t.Errorf("Span kind = %v, want CLIENT", span.Kind)
 	}
 
