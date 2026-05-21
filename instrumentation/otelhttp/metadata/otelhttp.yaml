@@ -1,0 +1,38 @@
+name: otelhttp
+display_name: net/http (otelhttp)
+description: >
+  Instruments net/http handlers and transports to emit HTTP server and client
+  spans and metrics. Wrap http.Handler with otelhttp.NewHandler() for server-side
+  instrumentation; wrap http.RoundTripper with otelhttp.NewTransport() for client-side.
+source_path: instrumentation/net/http/otelhttp
+scope:
+  name: go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
+  version: 0.68.0
+module:
+  path: go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
+  version: v0.68.0
+target_module: net/http
+library_link: https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
+instrumentation_type: wrapper
+installation:
+  type: wrapper
+  description: >
+    Initialize the OTel SDK, then wrap the http.Handler with otelhttp.NewHandler()
+    and/or wrap http.DefaultTransport with otelhttp.NewTransport().
+  example: |
+    shutdown, err := setupOTelSDK(ctx)
+    defer shutdown(ctx)
+
+    mux := http.NewServeMux()
+    // ... register handlers ...
+    http.ListenAndServe(":8080", otelhttp.NewHandler(mux, "my-service"))
+
+    // client-side
+    client := &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
+go_min_version: "1.25"
+semantic_conventions:
+  - HTTP_SERVER_SPANS
+  - HTTP_SERVER_METRICS
+  - HTTP_CLIENT_SPANS
+  - HTTP_CLIENT_METRICS
+stability: stable

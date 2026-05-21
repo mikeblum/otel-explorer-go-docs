@@ -1,0 +1,25 @@
+name: otelslog
+display_name: slog bridge (otelslog)
+description: >
+  Bridges Go's log/slog to the OpenTelemetry Logs SDK, correlating log records
+  with the active trace context automatically.
+source_path: bridges/otelslog
+scope:
+  name: go.opentelemetry.io/contrib/bridges/otelslog
+module:
+  path: go.opentelemetry.io/contrib/bridges/otelslog
+  version: v0.18.0
+target_module: log/slog
+library_link: https://pkg.go.dev/go.opentelemetry.io/contrib/bridges/otelslog
+instrumentation_type: bridge
+installation:
+  type: import
+  description: >
+    Pass the OTel logger provider to otelslog.NewLogger() and set it as the
+    default slog logger after initializing the SDK.
+  example: |
+    shutdown, _ := setupOTelSDK(ctx)
+    defer shutdown(ctx)
+    slog.SetDefault(otelslog.NewLogger("my-service"))
+go_min_version: "1.25"
+stability: stable
