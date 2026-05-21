@@ -23,6 +23,7 @@ go.work.sum
 
 # upstream opentelemetry repos
 opentelemetry-go*
+semantic-conventions*
 
 # build
 otel-explorer-go-docs

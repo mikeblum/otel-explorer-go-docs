@@ -1,6 +1,7 @@
 package instrumentation
 
 import (
+	"fmt"
 	"go/ast"
 	"strings"
 
@@ -48,6 +49,7 @@ func AnalyzePackage(pkgPath string) (*PackageAnalysis, error) {
 
 	// Extract telemetry (spans, metrics) from tracer/meter usage
 	analysis.Telemetry = extractTelemetry(pkg)
+	analysis.Groups = convertTelemetryToGroups(pkg.PkgPath, analysis.Telemetry)
 
 	return analysis, nil
 }
@@ -57,6 +59,7 @@ type PackageAnalysis struct {
 	Description         string
 	SemanticConventions []string
 	Telemetry           []Telemetry
+	Groups              []Group
 }
 
 func extractSemanticConventions(pkg *packages.Package) []string {
@@ -236,7 +239,9 @@ func detectSpanKindsInPackage(pkg *packages.Package) map[SpanKind]bool {
 				SpanKindProducer,
 				SpanKindConsumer,
 			} {
-				kinds[kind] = hasKind(selExpr.Sel.Name, kind)
+				if hasKind(selExpr.Sel.Name, kind) {
+					kinds[kind] = true
+				}
 			}
 			return true
 		})
@@ -246,7 +251,9 @@ func detectSpanKindsInPackage(pkg *packages.Package) map[SpanKind]bool {
 }
 
 func hasKind(kindName string, kind SpanKind) bool {
-	return strings.Contains(kindName, string(kind)) || strings.Contains(kindName, strings.ToTitle(string(kind)))
+	kindStr := strings.ToLower(string(kind))
+	nameStr := strings.ToLower(kindName)
+	return strings.Contains(nameStr, kindStr)
 }
 
 func extractSpanFromStart(callExpr *ast.CallExpr, spanMap map[SpanKind]*Span, pkgPath string, detectedKinds map[SpanKind]bool) {
@@ -327,15 +334,15 @@ func extractSpanKind(expr ast.Expr) SpanKind {
 		return ""
 	}
 
-	kindName := selExpr.Sel.Name
+	kindName := strings.ToLower(selExpr.Sel.Name)
 	switch {
-	case strings.Contains(kindName, strings.ToTitle(string(SpanKindServer))):
+	case strings.Contains(kindName, string(SpanKindServer)):
 		return SpanKindServer
-	case strings.Contains(kindName, strings.ToTitle(string(SpanKindClient))):
+	case strings.Contains(kindName, string(SpanKindClient)):
 		return SpanKindClient
-	case strings.Contains(kindName, strings.ToTitle(string(SpanKindProducer))):
+	case strings.Contains(kindName, string(SpanKindProducer)):
 		return SpanKindProducer
-	case strings.Contains(kindName, strings.ToTitle(string(SpanKindConsumer))):
+	case strings.Contains(kindName, string(SpanKindConsumer)):
 		return SpanKindConsumer
 	default:
 		return SpanKindInternal
@@ -471,7 +478,7 @@ func extractMetrics(pkg *packages.Package) []Metric {
 			metricType := mapMetricType(methodName)
 
 			if metricType == "" || len(callExpr.Args) == 0 {
-				return false
+				return true
 			}
 
 			if lit, ok := callExpr.Args[0].(*ast.BasicLit); ok {
@@ -507,14 +514,15 @@ func extractMetrics(pkg *packages.Package) []Metric {
 }
 
 func mapMetricType(methodName string) MetricType {
+	lowerName := strings.ToLower(methodName)
 	switch {
-	case strings.Contains(methodName, string(MetricTypeCounter)) && !strings.Contains(methodName, "UpDown"):
+	case strings.Contains(lowerName, string(MetricTypeCounter)) && !strings.Contains(lowerName, "updown"):
 		return MetricTypeCounter
-	case strings.Contains(methodName, string(MetricTypeHistogram)):
+	case strings.Contains(lowerName, string(MetricTypeHistogram)):
 		return MetricTypeHistogram
-	case strings.Contains(methodName, string(MetricTypeUpDownCounter)):
+	case strings.Contains(lowerName, string(MetricTypeUpDownCounter)):
 		return MetricTypeUpDownCounter
-	case strings.Contains(methodName, string(MetricTypeGauge)):
+	case strings.Contains(lowerName, string(MetricTypeGauge)):
 		return MetricTypeGauge
 	default:
 		return ""
@@ -652,6 +660,99 @@ func isRuntimePackage(pkgPath string) bool {
 
 func isHostPackage(pkgPath string) bool {
 	return strings.HasSuffix(pkgPath, "/instrumentation/host")
+}
+
+func makeSpanGroupID(pkgName string, kind SpanKind) string {
+	return fmt.Sprintf("%s.%s.span", pkgName, strings.ToLower(string(kind)))
+}
+
+func makeMetricGroupID(pkgName, metricName string) string {
+	return fmt.Sprintf("%s.metric.%s", pkgName, sanitizeMetricName(metricName))
+}
+
+func convertTelemetryToGroups(pkgPath string, telemetry []Telemetry) []Group {
+	groupMap := make(map[string]*Group)
+	pkgName := sanitizePackageName(pkgPath)
+
+	for _, tel := range telemetry {
+		for _, span := range tel.Spans {
+			attrs := convertAttributesToRefs(span.Attributes)
+			if len(attrs) == 0 {
+				continue
+			}
+
+			groupID := makeSpanGroupID(pkgName, span.Kind)
+			if existing, ok := groupMap[groupID]; ok {
+				attrMap := make(map[string]bool)
+				for _, attr := range existing.Attributes {
+					attrMap[attr.Ref] = true
+				}
+				for _, attr := range attrs {
+					if !attrMap[attr.Ref] {
+						existing.Attributes = append(existing.Attributes, attr)
+					}
+				}
+			} else {
+				groupMap[groupID] = &Group{
+					ID:         groupID,
+					Type:       "span",
+					Name:       pkgName + " " + strings.ToLower(string(span.Kind)) + " span",
+					Stability:  StabilityDevelopment,
+					Brief:      "Span for " + pkgName,
+					SpanKind:   span.Kind,
+					Attributes: attrs,
+				}
+			}
+		}
+
+		for _, metric := range tel.Metrics {
+			if _, ok := GetSemconvMetric(metric.Name); ok {
+				continue
+			}
+
+			groupID := makeMetricGroupID(pkgName, metric.Name)
+			if _, ok := groupMap[groupID]; !ok {
+				groupMap[groupID] = &Group{
+					ID:         groupID,
+					Type:       "metric",
+					MetricName: metric.Name,
+					Instrument: metric.Type,
+					Unit:       metric.Unit,
+					Stability:  StabilityDevelopment,
+					Brief:      "Metric " + metric.Name,
+					Attributes: convertAttributesToRefs(metric.Attributes),
+				}
+			}
+		}
+	}
+
+	var groups []Group
+	for _, group := range groupMap {
+		groups = append(groups, *group)
+	}
+
+	return groups
+}
+
+func convertAttributesToRefs(attrs []Attribute) []AttributeRef {
+	var refs []AttributeRef
+	for _, attr := range attrs {
+		refs = append(refs, AttributeRef{
+			Ref:              attr.Name,
+			RequirementLevel: "recommended",
+		})
+	}
+	return refs
+}
+
+func sanitizePackageName(pkgPath string) string {
+	parts := strings.Split(pkgPath, "/")
+	name := parts[len(parts)-1]
+	return strings.TrimPrefix(name, "otel")
+}
+
+func sanitizeMetricName(metricName string) string {
+	return strings.ReplaceAll(metricName, ".", "_")
 }
 
 func getSemConvMetrics(pkgPath string) []Metric {
