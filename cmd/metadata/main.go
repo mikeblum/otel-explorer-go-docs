@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/mikeblum/otel-explorer-go-docs/conf"
+	"github.com/mikeblum/otel-explorer-go-docs/instrumentation"
 	"github.com/mikeblum/otel-explorer-go-docs/metadata"
 )
 
@@ -28,9 +29,27 @@ func main() {
 			continue
 		}
 		dir := filepath.Join("instrumentation", entry.Name())
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err != nil {
+		goModPath := filepath.Join(dir, "go.mod")
+		if _, err := os.Stat(goModPath); err != nil {
 			continue
 		}
+
+		requires, err := instrumentation.ParseContribRequires(goModPath)
+		if err != nil {
+			log.WithErrorMsg(err, "failed to parse go.mod", "dir", dir)
+			continue
+		}
+
+		for _, req := range requires {
+			m := instrumentation.DeriveMetadata(req)
+			outPath := filepath.Join(dir, "metadata", m.Name+".yaml")
+			if err := instrumentation.GenerateMetadataYAML(outPath, m); err != nil {
+				log.WithErrorMsg(err, "failed to write metadata", "path", outPath)
+				continue
+			}
+			slog.Info("generated", "path", outPath)
+		}
+
 		items, err := metadata.LoadDir(filepath.Join(dir, "metadata"))
 		if err != nil {
 			log.WithErrorMsg(err, "failed to load metadata", "dir", dir)
