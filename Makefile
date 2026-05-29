@@ -18,6 +18,10 @@ build:
 clean: ## 🧹 Cleanup build artifacts
 	go clean && rm -rf .repo $(BINARY_NAME_BASE) coverage.* insturmentation-list.yaml
 
+.PHONY: metadata-gen
+metadata-gen: ## 📝 Generate instrumentation metadata YAML files
+	go run ./cmd/metadata
+
 .PHONY: dev
 dev: ## 🚀 Generate registry and validate with weaver
 	go run ./cmd/scanner
